@@ -1,3 +1,13 @@
+import { initBuffers } from "./init-buffers.js";
+import { drawScene } from "./draw-scene.js";
+
+// global variables
+let cubeRotation = 0.0;
+let deltaTime = 0;
+let keysPressed = {};
+const cubeTranslation = [0, 0, 0];
+let yaw = 0, pitch = 0;
+
 /**
  * Initialize a shader program, so WebGL knows how to draw our data
  * @param {WebGLRenderingContext} gl 
@@ -57,6 +67,10 @@ function loadShader(gl, type, source) {
   }
 
   return shader;
+}
+
+function getYawPitch() {
+
 }
 
 function main() {
