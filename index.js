@@ -1,3 +1,59 @@
+import { initBuffers } from "./init-buffers.js";
+import { drawObject } from "./draw-scene.js";
+
+// Global variables
+let obstacleX = 0;
+let obstacleY = 0;
+let obstacleScale = 1;
+let keyboardSensitivity = 1;
+let steps = 3;
+let obstacleVertexCount = 8; // points + lines
+let keyboardEvents = {};
+
+/**
+ * Transform the x and y to a translation matrix
+ * @param {Number} x The x location of the vertex (-100 to 100)
+ * @param {Number} y The y location of the vertex (-100 to 100)
+ * @returns {mat4} The tranform matrix
+ */
+function getTransformMatrix(x, y, scale) {
+  const transformMatrix = mat4.create();
+  mat4.scale(transformMatrix, transformMatrix, [obstacleScale, obstacleScale, 1]);
+  mat4.translate(transformMatrix, transformMatrix, [x / 100, y / 100, 0]);
+
+  return transformMatrix;
+}
+
+/**
+ * Utility function that does the calculation for object movements
+ */
+function calculateMovements() {
+  if (keyboardEvents['w']) {
+    obstacleY += steps * keyboardSensitivity;
+  }
+  if (keyboardEvents['s']) {
+    obstacleY -= steps * keyboardSensitivity;
+  }
+  if (keyboardEvents['a']) {
+    obstacleX -= steps * keyboardSensitivity;
+  }
+  if (keyboardEvents['d']) {
+    obstacleX += steps * keyboardSensitivity;
+  }
+
+  if (keyboardEvents['o']) {
+    obstacleScale += 0.01 * keyboardSensitivity;
+  }
+  if (keyboardEvents['p']) {
+    obstacleScale -= 0.01 * keyboardSensitivity;
+  }
+
+  if (obstacleX > 50) obstacleX = 50;
+  if (obstacleX < -50) obstacleX = -50;
+  if (obstacleY > 50) obstacleY = 50;
+  if (obstacleY < -50) obstacleY = -50;
+}
+
 /**
  * Initialize a shader program, so WebGL knows how to draw our data
  * @param {WebGLRenderingContext} gl 
@@ -62,9 +118,6 @@ function loadShader(gl, type, source) {
 function main() {
   /** @type {HTMLCanvasElement} */ // this is for vscode intellisense
   const canvas = document.querySelector("#gl-canvas");
-  canvas.addEventListener('click', async () => {
-    canvas.requestPointerLock();
-  })
   // Initialize the GL context
   /** @type {WebGLRenderingContext} */
   const gl = canvas.getContext("webgl");
@@ -80,34 +133,30 @@ function main() {
     return;
   }
 
-  // Set clear color to black, fully opaque
-  gl.clearColor(0.0, 0.0, 0.0, 1.0);
+  // Set clear color to white, fully opaque
+  gl.clearColor(1.0, 1.0, 1.0, 1.0);
   // Clear the color buffer with specified clear color
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   // Vertex shader program
-  // we provide uMoelViewMatrix and uProjectionMatrix
   const vsSource = `
-      attribute vec4 aVertexPosition;
-      attribute vec4 aVertexColor;
+      attribute vec2 aVertexPosition;
 
-      uniform mat4 uModelViewMatrix;
-      uniform mat4 uProjectionMatrix;
+      uniform mat4 uTransformMatrix; // This will hold the object's unique transformation
 
-      varying lowp vec4 vColor;
+      void main() {
+        gl_Position = uTransformMatrix * vec4(aVertexPosition, 0.0, 1.0);
 
-      void main(void) {
-        gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-        vColor = aVertexColor;
+        gl_PointSize = 10.0;
       }
   `;
 
   // Fragment shader program
   const fsSource = `
-    varying lowp vec4 vColor;
+    precision mediump float;
 
     void main() {
-      gl_FragColor = vColor;
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Output solid black
     }
   `;
 
@@ -118,84 +167,46 @@ function main() {
   // Collect all the info needed to use the shader program.
   // Look up which attribute our shader program is using
   // for aVertexPosition and look up uniform locations.
+  console.log(gl.getUniformLocation(shaderProgram, "uTransformMatrix"));
   const programInfo = {
     program: shaderProgram,
     attribLocations: {
       vertexPosition: gl.getAttribLocation(shaderProgram, "aVertexPosition"),
-      vertexColor: gl.getAttribLocation(shaderProgram, "aVertexColor"),
     },
     uniformLocations: {
-      projectionMatrix: gl.getUniformLocation(shaderProgram, "uProjectionMatrix"),
-      modelViewMatrix: gl.getUniformLocation(shaderProgram, "uModelViewMatrix"),
-    },
+      transformMatrix: gl.getUniformLocation(shaderProgram, "uTransformMatrix"),
+    }
   };
 
   // Here's where we call the routine that builds all the
   // objects we'll be drawing.
   const buffers = initBuffers(gl);
 
-  let then = 0;
-
+  // Keyboard inputs
   document.addEventListener('keydown', (event) => {
-    keysPressed[event.key] = true;
-  })
-
-  document.addEventListener('keyup', (event) => {
-    keysPressed[event.key] = false;
-  })
-
-  document.addEventListener("mousemove", (event) => {
-    if (document.pointerLockElement === canvas) {
-      const sensitivity = 0.002;
-      yaw += event.movementX * sensitivity;
-      pitch -= event.movementY * sensitivity;
-
-      // clamp pitch so you can't flip upside down
-      const maxPitch = Math.PI / 2 - 0.1;
-      if (pitch > maxPitch) pitch = maxPitch;
-      if (pitch < -maxPitch) pitch = -maxPitch;
-    }
+    keyboardEvents[event.key] = true;
   });
+  document.addEventListener('keyup', (event) => {
+    keyboardEvents[event.key] = false;
+  })
 
-  // Draw the scene repeatedly
+  // Draw scene
   function render(now) {
-    now *= 0.001; // ms → s
-    deltaTime = now - then;
-    then = now;
+    // calculate movements
+    calculateMovements();
 
-    // Movement speed
-    const speed = 3.0; // units per second
+    // Clear the canvas before we start drawing on it.
+    gl.clearColor(1.0, 1.0, 1.0, 1.0); // Set background to white
+    gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // Compute forward/right vectors from yaw
-    const forward = [Math.sin(yaw), 0, -Math.cos(yaw)];
-    const right = [Math.cos(yaw), 0, Math.sin(yaw)];
-
-    // WASD movement
-    if (keysPressed["w"]) {
-      cubeTranslation[0] += forward[0] * speed * deltaTime;
-      cubeTranslation[1] += forward[2] * speed * deltaTime;
-    }
-    if (keysPressed["s"]) {
-      cubeTranslation[0] -= forward[0] * speed * deltaTime;
-      cubeTranslation[1] -= forward[2] * speed * deltaTime;
-    }
-    if (keysPressed["a"]) {
-      cubeTranslation[0] -= right[0] * speed * deltaTime;
-      cubeTranslation[1] -= right[2] * speed * deltaTime;
-    }
-    if (keysPressed["d"]) {
-      cubeTranslation[0] += right[0] * speed * deltaTime;
-      cubeTranslation[1] += right[2] * speed * deltaTime;
-    }
-
-    // Draw scene
-    drawScene(gl, programInfo, buffers, cubeRotation, cubeTranslation, yaw, pitch);
-    // cubeRotation += deltaTime;
+    // draw the obstacle
+    drawObject(gl, programInfo, buffers, getTransformMatrix(obstacleX, obstacleY), obstacleVertexCount, [gl.LINES, gl.POINTS]); // need to fix
 
     requestAnimationFrame(render);
   }
-  requestAnimationFrame(render);
 
+  // start the loop
+  requestAnimationFrame(render);
 }
 
 main();
