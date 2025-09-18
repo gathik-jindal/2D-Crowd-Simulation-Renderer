@@ -113,14 +113,71 @@ function createNewPosition(obstacle, minX, maxX, minY, maxY) {
 }
 
 /**
- * 
- * @param {Object} obstacle The obstacle object
- * @param {Array<Number>} vertices The array of vertices
- * @returns 
+ * Triangulates a set of 2D points around a square obstacle, ensuring no triangle
+ * edges pass through the obstacle. This is achieved by treating the obstacle's
+ * edges as constraints.
+ *
+ * @param {object} obstacle - The obstacle definition.
+ * @param {number} obstacle.cx - The center x-coordinate of the obstacle.
+ * @param {number} obstacle.cy - The center y-coordinate of the obstacle.
+ * @param {number} obstacle.length - The length of the obstacle.
+ * @param {number} obstacle.width - The width of the obstacle
+ * @param {number} obstacle.scale - The scale factor for the obstacle.
+ * @param {number[]} flatPoints - A flat array of points in the format [x1, y1, x2, y2, ...].
+ * @returns {{flatPoints: number[], indices: number[]}} An object containing a flat array of
+ * vertex coordinates (x1, y1, x2, y2, ...) and a flat array of triangle indices
+ * (i1, i2, i3, i4, i5, i6, ...) suitable for rendering with APIs like OpenGL/WebGL.
+ * @throws {Error} if the cdt2d library is not available.
  */
-function triangulate(obstacle, vertices) {
-    // This is a placeholder function. Implement triangulation logic as needed.
-    return vertices;
+function triangulateWithObstacle(obstacle, flatPoints) {
+    // Check if the required cdt2d library is loaded.
+    if (typeof cdt2d === 'undefined') {
+        throw new Error('The "cdt2d" library is not loaded. Please include it in your project.');
+    }
+
+    // 1. Convert the flat point array into an array of [x, y] pairs for easier processing.
+    const userPoints = [];
+    for (let i = 0; i < flatPoints.length; i += 2) {
+        userPoints.push([flatPoints[i], flatPoints[i + 1]]);
+    }
+
+    // 2. Calculate the four vertices of the square obstacle from its center and side length.
+    const halfLength = (obstacle.length * obstacle.scale) / 2;
+    const halfWidth = (obstacle.width * obstacle.scale) / 2;
+    const obstacleVertices = [
+        [obstacle.cx - halfLength, obstacle.cy - halfWidth], // Top-left
+        [obstacle.cx + halfLength, obstacle.cy - halfWidth], // Top-right
+        [obstacle.cx + halfLength, obstacle.cy + halfWidth], // Bottom-right
+        [obstacle.cx - halfLength, obstacle.cy + halfWidth]  // Bottom-left
+    ];
+
+    // 3. Combine the user-provided points and the obstacle's vertices into a single list.
+    // This is necessary because the triangulation algorithm operates on a single set of vertices.
+    const allPoints = [...userPoints, ...obstacleVertices];
+
+    // 4. Define the constraint edges. These are the sides of the square obstacle that
+    // the triangulation cannot cross. The indices must refer to the `allPoints` array.
+    const userPointsCount = userPoints.length;
+    const constraints = [
+        [userPointsCount, userPointsCount + 1], // Top edge
+        [userPointsCount + 1, userPointsCount + 2], // Right edge
+        [userPointsCount + 2, userPointsCount + 3], // Bottom edge
+        [userPointsCount + 3, userPointsCount]      // Left edge
+    ];
+
+    // 5. Perform the constrained Delaunay triangulation using the cdt2d library.
+    // This is the core step that generates the list of triangles.
+    const triangles = cdt2d(allPoints, constraints, { interior: false });
+
+    // 6. Flatten the points and triangle indices for rendering (e.g., with WebGL/OpenGL).
+    const flatPointsResult = allPoints.flat();
+    const indices = triangles.flat();
+
+    // 7. Return the final structure in the requested flat format.
+    return {
+        flatPoints: flatPointsResult,
+        indices: indices
+    };
 }
 
 export { removeCollisions };

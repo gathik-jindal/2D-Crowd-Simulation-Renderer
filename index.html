@@ -1,38 +1,40 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>CG Project</title>
 
-    <script
-      src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"
-      integrity="sha512-zhHQR0/H5SEBL3Wn6yYSaTTZej12z0hVZKOv3TwCUXT1z5qeqGcXJLLrbERYRScEDDpYIJhPC1fk31gqR783iQ=="
-      crossorigin="anonymous"
-      defer></script>
+<head>
+  <meta charset="utf-8" />
+  <title>CG Project</title>
 
-    <script src="index.js" type="module"></script>
-  </head>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gl-matrix/2.8.1/gl-matrix-min.js"
+    integrity="sha512-zhHQR0/H5SEBL3Wn6yYSaTTZej12z0hVZKOv3TwCUXT1z5qeqGcXJLLrbERYRScEDDpYIJhPC1fk31gqR783iQ=="
+    crossorigin="anonymous" defer></script>
+  <!-- Triangulation Library -->
+  <script src="https://bundle.run/cdt2d@1.0.0"></script>
 
-  <style>
-    body {
-        height: calc(100vh - 18px);
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-        justify-content: center;
-        align-items: center;
-        background-color: grey;
-        font-size: medium;
-    }
+  <script src="index.js" type="module"></script>
+</head>
 
-    #gl-canvas {
-        width: 80%;
-        height: 80%;
-    }
-  </style>
+<style>
+  body {
+    height: calc(100vh - 18px);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    justify-content: center;
+    align-items: center;
+    background-color: grey;
+    font-size: medium;
+  }
 
-  <body>
-    <canvas id="gl-canvas"></canvas>
-    <div id="debug">__background__</div>
-  </body>
+  #gl-canvas {
+    width: 80%;
+    height: 80%;
+  }
+</style>
+
+<body>
+  <canvas id="gl-canvas"></canvas>
+  <div id="debug">__background__</div>
+</body>
+
 </html>
