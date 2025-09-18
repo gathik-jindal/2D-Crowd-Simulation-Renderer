@@ -1,121 +1,31 @@
-import { initBuffers } from "./init-buffers.js";
+import { initObstacleBuffers } from "./init-obstacle-buffers.js";
+import { initPeopleBuffers } from "./init-people-buffers.js";
+import { initDotBuffers } from "./init-dot-buffers.js";
 import { drawObject } from "./draw-scene.js";
+import { calculateMovements, getTransformMatrix } from "./utility.js";
+import { initShaderProgram, updateBuffer } from "./gl-utility.js";
+import { removeCollisions } from "./math.js";
 
+// ===========================
 // Global variables
-let obstacleX = 0;
-let obstacleY = 0;
-let obstacleScale = 1;
-let keyboardSensitivity = 1;
-let steps = 3;
-let obstacleVertexCount = 8; // points + lines
+// ===========================
 let keyboardEvents = {};
+const keyboardSensitivity = 1;
+const steps = 2;
+let maxX = 100; // not true changes based on aspect
+const maxY = 100;
+let minX = -100; // not true changes based on aspect
+const minY = -100;
+const minScale = 0.1;
+const maxScale = 1.5;
 
-/**
- * Transform the x and y to a translation matrix
- * @param {Number} x The x location of the vertex (-100 to 100)
- * @param {Number} y The y location of the vertex (-100 to 100)
- * @returns {mat4} The tranform matrix
- */
-function getTransformMatrix(x, y, scale) {
-  const transformMatrix = mat4.create();
-  mat4.scale(transformMatrix, transformMatrix, [obstacleScale, obstacleScale, 1]);
-  mat4.translate(transformMatrix, transformMatrix, [x / 100, y / 100, 0]);
-
-  return transformMatrix;
-}
-
-/**
- * Utility function that does the calculation for object movements
- */
-function calculateMovements() {
-  if (keyboardEvents['w']) {
-    obstacleY += steps * keyboardSensitivity;
-  }
-  if (keyboardEvents['s']) {
-    obstacleY -= steps * keyboardSensitivity;
-  }
-  if (keyboardEvents['a']) {
-    obstacleX -= steps * keyboardSensitivity;
-  }
-  if (keyboardEvents['d']) {
-    obstacleX += steps * keyboardSensitivity;
-  }
-
-  if (keyboardEvents['o']) {
-    obstacleScale += 0.01 * keyboardSensitivity;
-  }
-  if (keyboardEvents['p']) {
-    obstacleScale -= 0.01 * keyboardSensitivity;
-  }
-
-  if (obstacleX > 50) obstacleX = 50;
-  if (obstacleX < -50) obstacleX = -50;
-  if (obstacleY > 50) obstacleY = 50;
-  if (obstacleY < -50) obstacleY = -50;
-}
-
-/**
- * Initialize a shader program, so WebGL knows how to draw our data
- * @param {WebGLRenderingContext} gl 
- * @param {string} vsSource 
- * @param {string} fsSource 
- * @returns {WebGLProgram}
- */
-function initShaderProgram(gl, vsSource, fsSource) {
-  /** @type {WebGLShader} */
-  const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-  /** @type {WebGLShader} */
-  const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
-
-  // Create the shader program
-  /** @type {WebGLProgram} */
-  const shaderProgram = gl.createProgram();
-  gl.attachShader(shaderProgram, vertexShader);
-  gl.attachShader(shaderProgram, fragmentShader);
-  gl.linkProgram(shaderProgram);
-
-  // If creating the shader program failed, alert
-  if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-    alert(
-      `Unable to initialize the shader program: ${gl.getProgramInfoLog(
-        shaderProgram,
-      )}`,
-    );
-    return null;
-  }
-
-  return shaderProgram;
-}
-
-/**
- * creates a shader of a given type, uploads the source and compiles it
- * @param {WebGLRenderingContext} gl 
- * @param {Number} type 
- * @param {string} source 
- * @returns 
- */
-function loadShader(gl, type, source) {
-  const shader = gl.createShader(type);
-
-  // Send the source to the shader object
-  gl.shaderSource(shader, source);
-
-  // Compile the shader program
-  gl.compileShader(shader);
-
-  // See if it compiled successfully
-  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    alert(
-      `An error occurred compiling the shaders: ${gl.getShaderInfoLog(shader)}`,
-    );
-    gl.deleteShader(shader);
-    return null;
-  }
-
-  return shader;
-}
+const NUMBER_OF_PEOPLE = 20;
+const NUMBER_OF_DOTS = 20;
+const DOT_SIZE = 2.0; // in canvas units
 
 function main() {
+
+  const d = document.getElementById("debug");
   /** @type {HTMLCanvasElement} */ // this is for vscode intellisense
   const canvas = document.querySelector("#gl-canvas");
   // Initialize the GL context
@@ -124,6 +34,13 @@ function main() {
   canvas.width = canvas.clientWidth; // setting correct dimensions
   canvas.height = canvas.clientHeight;
   gl.viewport(0, 0, canvas.width, canvas.height);
+  const projectionMatrix = mat4.create();
+  const aspect = canvas.clientWidth / canvas.clientHeight;
+  // This creates a camera that shows -100 to 100 on the Y axis,
+  // and a correctly scaled range on the X axis.
+  mat4.ortho(projectionMatrix, -100 * aspect, 100 * aspect, -100, 100, -1, 1);
+  maxX = 100 * aspect;
+  minX = -100 * aspect;
 
   // Only continue if WebGL is available and working
   if (gl === null) {
@@ -138,16 +55,24 @@ function main() {
   // Clear the color buffer with specified clear color
   gl.clear(gl.COLOR_BUFFER_BIT);
 
+  // =============================
+  // SHADER PROGRAM
+  // =============================
+
   // Vertex shader program
   const vsSource = `
       attribute vec2 aVertexPosition;
+      attribute vec4 aVertexColor;
 
       uniform mat4 uTransformMatrix; // This will hold the object's unique transformation
+      uniform mat4 uProjectionMatrix; // This will hold the camera's projection matrix
+
+      varying lowp vec4 vColor;
 
       void main() {
-        gl_Position = uTransformMatrix * vec4(aVertexPosition, 0.0, 1.0);
-
-        gl_PointSize = 10.0;
+        gl_Position = uProjectionMatrix * uTransformMatrix * vec4(aVertexPosition, 0.0, 1.0);
+        vColor = aVertexColor;
+        gl_PointSize = ${DOT_SIZE * (canvas.height / 200.0)}; // make size of point depend on canvas size
       }
   `;
 
@@ -155,8 +80,10 @@ function main() {
   const fsSource = `
     precision mediump float;
 
+    varying lowp vec4 vColor;
+
     void main() {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); // Output solid black
+      gl_FragColor = vColor; // Output solid black
     }
   `;
 
@@ -167,21 +94,66 @@ function main() {
   // Collect all the info needed to use the shader program.
   // Look up which attribute our shader program is using
   // for aVertexPosition and look up uniform locations.
-  console.log(gl.getUniformLocation(shaderProgram, "uTransformMatrix"));
-  const programInfo = {
+  const obstacleProgramInfo = {
     program: shaderProgram,
     attribLocations: {
       vertexPosition: gl.getAttribLocation(shaderProgram, "aVertexPosition"),
+      vertexColor: gl.getAttribLocation(shaderProgram, "aVertexColor"),
     },
     uniformLocations: {
       transformMatrix: gl.getUniformLocation(shaderProgram, "uTransformMatrix"),
+      projectionMatrix: gl.getUniformLocation(shaderProgram, "uProjectionMatrix"),
     }
   };
+  const peopleProgramInfo = obstacleProgramInfo; // using same shader for now
+  const dotProgramInfo = obstacleProgramInfo; // using same shader for now
+
+  // ==========================
+  // Defining objects
+  // =========================
+  let obstacle = {
+    x: 0,
+    y: 0,
+    scale: 1,
+    vertexCount: 6, // triangles
+    length: 100,
+    width: 100,
+
+    // for the sake of collision detection
+    p1: [-50, -50], // minX, minY
+    p3: [50, 50], // maxX, maxY
+  };
+
+  let people = (() => {
+    let array = [];
+    for (let i = 0; i < NUMBER_OF_PEOPLE; i++) {
+      array.push(Math.random() * (maxX - minX) + minX, Math.random() * (maxY - minY) + minY);
+    }
+    return array;
+  })();
+
+  let dot = (() => {
+    let array = [];
+    for (let i = 0; i < NUMBER_OF_DOTS; i++) {
+      array.push(Math.random() * (maxX - minX) + minX, Math.random() * (maxY - minY) + minY);
+    }
+    return array;
+  })();
+
+  // make sure there are no initial collisions
+  const updatedPositions = removeCollisions(obstacle, people, dot, { maxX, minX, maxY, minY });
+  people = updatedPositions.people;
+  dot = updatedPositions.dots;
 
   // Here's where we call the routine that builds all the
   // objects we'll be drawing.
-  const buffers = initBuffers(gl);
+  const obstacleBuffers = initObstacleBuffers(gl);
+  const peopleBuffers = initPeopleBuffers(gl, people);
+  const dotBuffers = initDotBuffers(gl, dot);
 
+  // =============================
+  // DOM Related events
+  // =============================
   // Keyboard inputs
   document.addEventListener('keydown', (event) => {
     keyboardEvents[event.key] = true;
@@ -189,18 +161,54 @@ function main() {
   document.addEventListener('keyup', (event) => {
     keyboardEvents[event.key] = false;
   })
+  // Mouse click
+  let mouseX = 0;
+  let mouseY = 0;
+  canvas.addEventListener('click', (event) => {
+    const rect = canvas.getBoundingClientRect();
 
+    const pixelX = event.clientX - rect.left;
+    const pixelY = event.clientY - rect.top;
+    const clipX = (pixelX / canvas.width) * 2 - 1;
+    const clipY = (pixelY / canvas.height) * -2 + 1; // Y is inverted
+    const clipCoords = vec4.fromValues(clipX, clipY, 0, 1); // vec4 for 4x4 matrix math
+
+    const invProjectionMatrix = mat4.create();
+    mat4.invert(invProjectionMatrix, projectionMatrix); // projectionMatrix from main()
+    const worldCoords = vec4.create();
+    vec4.transformMat4(worldCoords, clipCoords, invProjectionMatrix);
+
+    mouseX = worldCoords[0];
+    mouseY = worldCoords[1];
+  });
+
+
+  // ====================================
   // Draw scene
+  // ====================================
   function render(now) {
     // calculate movements
-    calculateMovements();
+    let movement = calculateMovements(keyboardEvents, obstacle, maxX, minX, maxY, minY, minScale, maxScale, keyboardSensitivity, steps);
+
+    if (movement) {
+      // if there was a movement, update the people and dot positions to remove collisions
+      const updatedPositions = removeCollisions(obstacle, people, dot, { maxX, minX, maxY, minY });
+      people = updatedPositions.people;
+      dot = updatedPositions.dots;
+      updateBuffer(gl, peopleBuffers.position, new Float32Array(people), gl.DYNAMIC_DRAW);
+      updateBuffer(gl, dotBuffers.position, new Float32Array(dot), gl.DYNAMIC_DRAW);
+    }
+
+    d.innerText = `x: ${obstacle.x}, y: ${obstacle.y}, scale: ${obstacle.scale}`;
 
     // Clear the canvas before we start drawing on it.
     gl.clearColor(1.0, 1.0, 1.0, 1.0); // Set background to white
     gl.clear(gl.COLOR_BUFFER_BIT);
 
-    // draw the obstacle
-    drawObject(gl, programInfo, buffers, getTransformMatrix(obstacleX, obstacleY), obstacleVertexCount, [gl.LINES, gl.POINTS]); // need to fix
+    // draw the elements
+    drawObject(gl, obstacleProgramInfo, obstacleBuffers, getTransformMatrix(obstacle.x, obstacle.y, obstacle.scale), obstacle.vertexCount, [gl.TRIANGLES], projectionMatrix);
+    drawObject(gl, dotProgramInfo, dotBuffers, mat4.create(), dot.length / 2, [gl.POINTS], projectionMatrix);
+    drawObject(gl, peopleProgramInfo, peopleBuffers, mat4.create(), people.length / 2, [gl.POINTS], projectionMatrix);
 
     requestAnimationFrame(render);
   }
