@@ -6,22 +6,30 @@
  * @param {maxX: Number, minX: Number, maxY: Number, minY: Number} bounds The boundary limits
  * @returns {people: Array<Number>, dots: Array<Number>} The updated array of dots and people positions
  */
-function updateCollisions(obstacle, people, dots, bounds) {
-    const maxX = bounds.maxX;
-    const minX = bounds.minX;
-    const maxY = bounds.maxY;
-    const minY = bounds.minY;
+function updateCollisions(obstacle, people, dots, bounds, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE) {
+    const { maxX, minX, maxY, minY } = bounds;
 
     function isColliding(x, y) {
-        let isInside = false;
-        if (x >= obstacle.p1[0] && x <= obstacle.p3[0] && y >= obstacle.p1[1] && y <= obstacle.p3[1]) {
-            isInside = true;
-        }
+        const translatedX = x - obstacle.x;
+        const translatedY = y - obstacle.y;
 
-        return isInside;
+        // rotate the point backwards by the obstacle's rotation angle.
+        const angleRad = -obstacle.rotation * Math.PI / 180; // Negative angle
+        const cosAngle = Math.cos(angleRad);
+        const sinAngle = Math.sin(angleRad);
+
+        const rotatedX = translatedX * cosAngle - translatedY * sinAngle;
+        const rotatedY = translatedX * sinAngle + translatedY * cosAngle;
+
+        // perform a simple AABB check in the obstacle's local, unrotated space.
+        const halfLength = (obstacle.length * obstacle.scale) / 2;
+        const halfWidth = (obstacle.width * obstacle.scale) / 2;
+
+        return (rotatedX >= -halfLength && rotatedX <= halfLength &&
+            rotatedY >= -halfWidth && rotatedY <= halfWidth);
     }
 
-    // Remove colliding people
+    // remove colliding people
     let updatedPeople = [];
     for (let i = 0; i < people.length; i += 2) {
         const px = people[i];
@@ -31,7 +39,7 @@ function updateCollisions(obstacle, people, dots, bounds) {
         }
     }
 
-    // Remove colliding dots
+    // remove colliding dots
     let updatedDots = [];
     for (let i = 0; i < dots.length; i += 2) {
         const dx = dots[i];
@@ -41,17 +49,17 @@ function updateCollisions(obstacle, people, dots, bounds) {
         }
     }
 
-    // Calculate how many people and dots were removed
+    // calculate how many people and dots were removed
     const peopleRemoved = (people.length - updatedPeople.length) / 2;
     const dotsRemoved = (dots.length - updatedDots.length) / 2;
 
-    // Add new people at random positions within the bounds
+    // add new people at random positions within the bounds
     for (let i = 0; i < peopleRemoved; i++) {
         const newPos = createNewPosition(obstacle, minX, maxX, minY, maxY);
         updatedPeople.push(newPos.x, newPos.y);
     }
 
-    // Add new dots at random positions within the bounds
+    // add new dots at random positions within the bounds
     for (let i = 0; i < dotsRemoved; i++) {
         const newPos = createNewPosition(obstacle, minX, maxX, minY, maxY);
         updatedDots.push(newPos.x, newPos.y);
@@ -70,46 +78,39 @@ function updateCollisions(obstacle, people, dots, bounds) {
  * @returns {{x: number, y: number}|null} - The new position, or null if no space is available.
  */
 function createNewPosition(obstacle, minX, maxX, minY, maxY) {
-    const potentialRegions = [
-        {
-            x: minX,
-            y: minY,
-            width: obstacle.p1[0] - minX,
-            height: maxY - minY
-        },
-        {
-            x: obstacle.p3[0],
-            y: minY,
-            width: maxX - obstacle.p3[0],
-            height: maxY - minY
-        },
-        {
-            x: obstacle.p1[0],
-            y: minY,
-            width: obstacle.p3[0] - obstacle.p1[0],
-            height: obstacle.p1[1] - minY
-        },
-        {
-            x: obstacle.p1[0],
-            y: obstacle.p3[1],
-            width: obstacle.p3[0] - obstacle.p1[0],
-            height: maxY - obstacle.p3[1]
+    let newPos;
+    let isColliding = true;
+    let attempts = 0;
+
+    // A copy of the collision logic from above to use locally
+    const isPointColliding = (x, y) => {
+        const translatedX = x - obstacle.x;
+        const translatedY = y - obstacle.y;
+        const angleRad = -obstacle.rotation * Math.PI / 180;
+        const cosAngle = Math.cos(angleRad);
+        const sinAngle = Math.sin(angleRad);
+        const rotatedX = translatedX * cosAngle - translatedY * sinAngle;
+        const rotatedY = translatedX * sinAngle + translatedY * cosAngle;
+        const halfLength = (obstacle.length * obstacle.scale) / 2;
+        const halfWidth = (obstacle.width * obstacle.scale) / 2;
+        return (rotatedX >= -halfLength && rotatedX <= halfLength &&
+            rotatedY >= -halfWidth && rotatedY <= halfWidth);
+    };
+
+    while (isColliding) {
+        newPos = {
+            x: Math.random() * (maxX - minX) + minX,
+            y: Math.random() * (maxY - minY) + minY,
+        };
+        isColliding = isPointColliding(newPos.x, newPos.y);
+
+        attempts++;
+        if (attempts > 100) { // Safety break to prevent infinite loops
+            console.error("Could not find a valid position for a new point.");
+            return null;
         }
-    ];
-
-    const validRegions = potentialRegions.filter(region => region.width > 0 && region.height > 0);
-
-    if (validRegions.length === 0) {
-        console.error("No valid spawn area exists.");
-        return null;
     }
-
-    const chosenRegion = validRegions[Math.floor(Math.random() * validRegions.length)];
-
-    const x = Math.random() * chosenRegion.width + chosenRegion.x;
-    const y = Math.random() * chosenRegion.height + chosenRegion.y;
-
-    return { x, y };
+    return newPos;
 }
 
 /**
@@ -130,53 +131,51 @@ function createNewPosition(obstacle, minX, maxX, minY, maxY) {
  * @throws {Error} if the cdt2d library is not available.
  */
 function triangulateWithObstacle(obstacle, flatPoints) {
-    // Check if the required cdt2d library is loaded.
     if (typeof cdt2d === 'undefined') {
-        throw new Error('The "cdt2d" library is not loaded. Please include it in your project.');
+        throw new Error('The "cdt2d" library is not loaded.');
     }
 
-    // 1. Convert the flat point array into an array of [x, y] pairs for easier processing.
     const userPoints = [];
     for (let i = 0; i < flatPoints.length; i += 2) {
         userPoints.push([flatPoints[i], flatPoints[i + 1]]);
     }
 
-    // 2. Calculate the four vertices of the square obstacle from its center and side length.
+    // Calculate the true rotated corner positions
     const halfLength = (obstacle.length * obstacle.scale) / 2;
     const halfWidth = (obstacle.width * obstacle.scale) / 2;
-    const obstacleVertices = [
-        [obstacle.x - halfLength, obstacle.y - halfWidth], // Top-left
-        [obstacle.x + halfLength, obstacle.y - halfWidth], // Top-right
-        [obstacle.x + halfLength, obstacle.y + halfWidth], // Bottom-right
-        [obstacle.x - halfLength, obstacle.y + halfWidth]  // Bottom-left
+    const angleRad = obstacle.rotation * Math.PI / 180;
+    const cosAngle = Math.cos(angleRad);
+    const sinAngle = Math.sin(angleRad);
+
+    const localCorners = [
+        [-halfLength, -halfWidth], // Local top-left
+        [halfLength, -halfWidth],  // Local top-right
+        [halfLength, halfWidth],   // Local bottom-right
+        [-halfLength, halfWidth]   // Local bottom-left
     ];
 
-    // 3. Combine the user-provided points and the obstacle's vertices into a single list.
-    // This is necessary because the triangulation algorithm operates on a single set of vertices.
+    const obstacleVertices = localCorners.map(p => {
+        const rotatedX = p[0] * cosAngle - p[1] * sinAngle;
+        const rotatedY = p[0] * sinAngle + p[1] * cosAngle;
+        return [rotatedX + obstacle.x, rotatedY + obstacle.y];
+    });
+
     const allPoints = [...userPoints, ...obstacleVertices];
 
-    // 4. Define the constraint edges. These are the sides of the square obstacle that
-    // the triangulation cannot cross. The indices must refer to the `allPoints` array.
+    // Constraints are the edges connecting the new obstacle vertices
     const userPointsCount = userPoints.length;
     const constraints = [
-        [userPointsCount, userPointsCount + 1], // Top edge
-        [userPointsCount + 1, userPointsCount + 2], // Right edge
-        [userPointsCount + 2, userPointsCount + 3], // Bottom edge
-        [userPointsCount + 3, userPointsCount]      // Left edge
+        [userPointsCount, userPointsCount + 1],
+        [userPointsCount + 1, userPointsCount + 2],
+        [userPointsCount + 2, userPointsCount + 3],
+        [userPointsCount + 3, userPointsCount]
     ];
 
-    // 5. Perform the constrained Delaunay triangulation using the cdt2d library.
-    // This is the core step that generates the list of triangles.
     const triangles = cdt2d(allPoints, constraints, { interior: false });
 
-    // 6. Flatten the points and triangle indices for rendering (e.g., with WebGL/OpenGL).
-    const flatPointsResult = allPoints.flat();
-    const indices = triangles.flat();
-
-    // 7. Return the final structure in the requested flat format.
     return {
-        vertices: flatPointsResult,
-        indices: indices
+        vertices: allPoints.flat(),
+        indices: triangles.flat()
     };
 }
 

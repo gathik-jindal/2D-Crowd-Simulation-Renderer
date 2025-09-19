@@ -20,7 +20,7 @@ const maxScale = 1.5;
 const NUMBER_OF_PEOPLE = 200;
 const NUMBER_OF_DOTS = 40;
 const DOT_SIZE = 2.0; // in canvas units
-const DENSITY = 3 // number of people per triangle
+const DENSITY = 4 // number of people per triangle
 
 const RED = [1.0, 0.0, 0.0, 0.3];
 const ORANGE = [1.0, 0.5, 0.0, 0.9];
@@ -126,6 +126,8 @@ function main() {
     vertexCount: 6, // triangles
     length: 100,
     width: 100,
+
+    rotation: 0,
 
     // for the sake of collision detection
     p1: [-50, -50], // minX, minY
@@ -268,10 +270,9 @@ function main() {
 
     if (movement) {
       // if there was a movement, update the people and dot positions to remove collisions
-      const updatedPositions = updateCollisions(obstacle, people, dots, { maxX, minX, maxY, minY });
+      const updatedPositions = updateCollisions(obstacle, people, dots, { maxX, minX, maxY, minY }, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE);
       people = updatedPositions.people;
       dots = updatedPositions.dots;
-      // dots.push(...addCorners(obstacle, maxX, minX, maxY, minY)); // adding corners of the canvas
       updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.position, new Float32Array(people), gl.DYNAMIC_DRAW);
       updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.position, new Float32Array(dots), gl.DYNAMIC_DRAW);
 
@@ -304,7 +305,7 @@ function main() {
       updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, lineBuffers.indices, new Uint16Array(lines.indices), gl.DYNAMIC_DRAW);
     }
 
-    d.innerText = `x: ${obstacle.x}, y: ${obstacle.y}, scale: ${obstacle.scale}`;
+    d.innerText = `x: ${obstacle.x}, y: ${obstacle.y}, scale: ${obstacle.scale}, rotation: ${obstacle.rotation}`;
 
     // Clear the canvas before we start drawing on it.
     gl.clearColor(1.0, 1.0, 1.0, 1.0); // Set background to white
@@ -315,7 +316,7 @@ function main() {
     drawObject(gl, triangleProgramInfo, orangeTriangleBuffers, mat4.create(), orangeTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
     drawObject(gl, triangleProgramInfo, greenTriangleBuffers, mat4.create(), greenTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
     drawObject(gl, lineProgramInfo, lineBuffers, mat4.create(), lines.indices.length, [gl.LINES], projectionMatrix);
-    drawObject(gl, obstacleProgramInfo, obstacleBuffers, getTransformMatrix(obstacle.x, obstacle.y, obstacle.scale), obstacle.vertexCount, [gl.TRIANGLES], projectionMatrix);
+    drawObject(gl, obstacleProgramInfo, obstacleBuffers, getTransformMatrix(obstacle.x, obstacle.y, obstacle.scale, obstacle.rotation), obstacle.vertexCount, [gl.TRIANGLES], projectionMatrix);
     drawObject(gl, dotProgramInfo, dotBuffers, mat4.create(), dots.length / 2, [gl.POINTS], projectionMatrix);
     drawObject(gl, peopleProgramInfo, peopleBuffers, mat4.create(), people.length / 2, [gl.POINTS], projectionMatrix);
 

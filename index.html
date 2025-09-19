@@ -18,23 +18,73 @@
   body {
     height: calc(100vh - 18px);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 20px;
     justify-content: center;
     align-items: center;
-    background-color: grey;
+    background-color: yellow;
     font-size: medium;
+  }
+
+  #container {
+    width: 75%;
+    height: 100%;
+
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
   }
 
   #gl-canvas {
     width: 80%;
     height: 80%;
+
+    border: 2px solid black;
+  }
+
+  #sliders {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+
+    width: 25%;
+    height: 100%;
+    padding: 10px;
   }
 </style>
 
 <body>
-  <canvas id="gl-canvas"></canvas>
-  <div id="debug">__background__</div>
+  <div id="container">
+    <canvas id="gl-canvas"></canvas>
+    <div id="debug">__background__</div>
+  </div>
+  <div id="sliders">
+    <!-- Contains sliders for dots and people -->
+    <div> Use the sliders to change the number of dots and people in the scene.
+      <br /> Use w/a/s/d to move the obstacle, q/e to rotate, and o/p to scale.
+    </div>
+    <div>
+      <label for="dots">Number of Dots: </label>
+      <input type="range" id="dots" name="dots" min="0" max="500" value="100" />
+      <span id="dots-value">100</span>
+    </div>
+
+    <div>
+      <label for="people">Number of People: </label>
+      <input type="range" id="people" name="people" min="0" max="500" value="100" />
+      <span id="people-value">100</span>
+    </div>
+
+    <div>
+      <label for="density">Number of Density: </label>
+      <input type="range" id="density" name="density" min="0" max="50" value="4" />
+      <span id="density-value">4</span>
+    </div>
+  </div>
 </body>
 
 </html>
