@@ -30,11 +30,4 @@ function createSliderEventListeners(onChange) {
     });
 }
 
-/** Updates the labels next to the sliders to reflect their current values.
- */
-function updateSliderLabels() {
-    const { numDots, numPeople, density } = getValuesFromSliders();
-    document.getElementById("dots-value").innerText = numDots;
-    document.getElementById("people-value").innerText = numPeople;
-    document.getElementById("density-value").innerText = density;
-}
+export { createSliderEventListeners, getValuesFromSliders };

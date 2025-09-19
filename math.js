@@ -50,8 +50,8 @@ function updateCollisions(obstacle, people, dots, bounds, NUMBER_OF_DOTS, NUMBER
     }
 
     // calculate how many people and dots were removed
-    const peopleRemoved = (people.length - updatedPeople.length) / 2;
-    const dotsRemoved = (dots.length - updatedDots.length) / 2;
+    const peopleRemoved = NUMBER_OF_PEOPLE - (updatedPeople.length / 2);
+    const dotsRemoved = NUMBER_OF_DOTS - (updatedDots.length / 2);
 
     // add new people at random positions within the bounds
     for (let i = 0; i < peopleRemoved; i++) {

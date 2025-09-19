@@ -3,6 +3,7 @@ import { drawObject } from "./draw-scene.js";
 import { calculateMovements, getTransformMatrix } from "./utility.js";
 import { initShaderProgram, updateBuffer } from "./gl-utility.js";
 import { updateCollisions, triangulateWithObstacle, getTriangleDensityColor, convertTriangleIndicesToLineIndices } from "./math.js";
+import { createSliderEventListeners, getValuesFromSliders } from "./DOM.js";
 
 // ===========================
 // Global variables
@@ -17,14 +18,16 @@ const minY = -100;
 const minScale = 0.1;
 const maxScale = 1.5;
 
-const NUMBER_OF_PEOPLE = 200;
-const NUMBER_OF_DOTS = 40;
+let NUMBER_OF_PEOPLE = 10;
+let NUMBER_OF_DOTS = 40;
 const DOT_SIZE = 2.0; // in canvas units
-const DENSITY = 4 // number of people per triangle
+let DENSITY = 4 // number of people per triangle
 
 const RED = [1.0, 0.0, 0.0, 0.3];
 const ORANGE = [1.0, 0.5, 0.0, 0.9];
 const GREEN = [0.0, 1.0, 0.0, 0.3];
+const BLACK = [0.0, 0.0, 0.0, 1.0];
+const RED_SOLID = [1.0, 0.0, 0.0, 1.0];
 
 function main() {
 
@@ -158,7 +161,7 @@ function main() {
   ]
 
   // make sure there are no initial collisions
-  const updatedPositions = updateCollisions(obstacle, people, dots, { maxX, minX, maxY, minY });
+  const updatedPositions = updateCollisions(obstacle, people, dots, { maxX, minX, maxY, minY }, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE);
   people = updatedPositions.people;
   dots = updatedPositions.dots;
   let triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
@@ -185,15 +188,17 @@ function main() {
   // --- People Buffers ---
   const peopleBuffers = initBuffers(gl, {
     positions: people,
-    colors: generateUniformColors(NUMBER_OF_PEOPLE, [1.0, 0.0, 0.0, 1.0]), // Red
+    colors: generateUniformColors(NUMBER_OF_PEOPLE, RED_SOLID),
     positionUsage: gl.DYNAMIC_DRAW,
+    colorUsage: gl.DYNAMIC_DRAW,
   });
 
   // --- Dot Buffers ---
   const dotBuffers = initBuffers(gl, {
     positions: dots,
-    colors: generateUniformColors(NUMBER_OF_DOTS, [0.0, 0.0, 0.0, 1.0]), // Black
+    colors: generateUniformColors(NUMBER_OF_DOTS, BLACK),
     positionUsage: gl.DYNAMIC_DRAW,
+    colorUsage: gl.DYNAMIC_DRAW,
   });
 
   // --- Triangle Buffers ---
@@ -259,6 +264,16 @@ function main() {
     mouseX = worldCoords[0];
     mouseY = worldCoords[1];
   });
+
+  createSliderEventListeners(() => {
+    let values = getValuesFromSliders();
+    NUMBER_OF_DOTS = values.numDots;
+    NUMBER_OF_PEOPLE = values.numPeople;
+    DENSITY = values.density;
+
+    updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.color, new Float32Array(generateUniformColors(NUMBER_OF_DOTS, BLACK)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.color, new Float32Array(generateUniformColors(NUMBER_OF_PEOPLE, RED_SOLID)), gl.DYNAMIC_DRAW);
+  })
 
 
   // ====================================
