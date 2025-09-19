@@ -6,7 +6,7 @@
  * @param {maxX: Number, minX: Number, maxY: Number, minY: Number} bounds The boundary limits
  * @returns {people: Array<Number>, dots: Array<Number>} The updated array of dots and people positions
  */
-function removeCollisions(obstacle, people, dots, bounds) {
+function updateCollisions(obstacle, people, dots, bounds) {
     const maxX = bounds.maxX;
     const minX = bounds.minX;
     const maxY = bounds.maxY;
@@ -181,6 +181,105 @@ function triangulateWithObstacle(obstacle, flatPoints) {
 }
 
 /**
+ * This function assigns a color to each triangle based on the density of people within it.
+ * Triangles with a density above the specified threshold are colored red (overpopulated),
+ * those with a density equal to the threshold are colored orange (correctly populated),
+ * and those below are colored green (underpopulated).
+ *
+ * @param {{vertices: Array<Number>, indices: Array<Number>}} triangleData The complete triangulation data.
+ * @param {Array<Number>} people A flat array of people positions [x1, y1, x2, y2, ...].
+ * @param {Number} densityThreshold The target number of people per triangle.
+ * @returns {{
+ * red: {vertices: Array<Number>, indices: Array<Number>},
+ * orange: {vertices: Array<Number>, indices: Array<Number>},
+ * green: {vertices: Array<Number>, indices: Array<Number>}
+ * }} An object containing the separated geometry for each density color.
+ */
+function getTriangleDensityColor(triangleData, people, densityThreshold) {
+    // Helper function to check if a point is inside a triangle using barycentric coordinates.
+    const isPointInTriangle = (px, py, v1x, v1y, v2x, v2y, v3x, v3y) => {
+        const d1 = (px - v2x) * (v1y - v2y) - (v1x - v2x) * (py - v2y);
+        const d2 = (px - v3x) * (v2y - v3y) - (v2x - v3x) * (py - v3y);
+        const d3 = (px - v1x) * (v3y - v1y) - (v3x - v1x) * (py - v1y);
+        const has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+        const has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+        return !(has_neg && has_pos);
+    };
+
+    // Initialize output structure. We will create new, separate geometry for each color.
+    const result = {
+        red: { vertices: [], indices: [] },    // Overpopulated
+        orange: { vertices: [], indices: [] }, // Correctly populated
+        green: { vertices: [], indices: [] },  // Underpopulated
+    };
+
+    // To avoid duplicating vertex data, we use maps to track which vertices
+    // have already been added to each color's vertex list.
+    const vertexMaps = {
+        red: new Map(),
+        orange: new Map(),
+        green: new Map(),
+    };
+
+    // 1. Iterate through each triangle defined in the index buffer.
+    for (let i = 0; i < triangleData.indices.length; i += 3) {
+        const i1 = triangleData.indices[i];
+        const i2 = triangleData.indices[i + 1];
+        const i3 = triangleData.indices[i + 2];
+
+        const v1x = triangleData.vertices[i1 * 2];
+        const v1y = triangleData.vertices[i1 * 2 + 1];
+        const v2x = triangleData.vertices[i2 * 2];
+        const v2y = triangleData.vertices[i2 * 2 + 1];
+        const v3x = triangleData.vertices[i3 * 2];
+        const v3y = triangleData.vertices[i3 * 2 + 1];
+
+        // 2. For the current triangle, count how many people are inside it.
+        let peopleCount = 0;
+        for (let j = 0; j < people.length; j += 2) {
+            const px = people[j];
+            const py = people[j + 1];
+            if (isPointInTriangle(px, py, v1x, v1y, v2x, v2y, v3x, v3y)) {
+                peopleCount++;
+            }
+        }
+
+        // 3. Categorize the triangle based on its population density.
+        let category;
+        if (peopleCount > densityThreshold) {
+            category = 'red';
+        } else if (peopleCount === densityThreshold) {
+            category = 'orange';
+        } else {
+            category = 'green';
+        }
+
+        const target = result[category];
+        const vertexMap = vertexMaps[category];
+        const originalIndices = [i1, i2, i3];
+
+        // 4. Add the triangle's vertices and new indices to the correct category.
+        originalIndices.forEach(originalIndex => {
+            // If we haven't seen this vertex before for this color...
+            if (!vertexMap.has(originalIndex)) {
+                // ...add its position to the new vertex list...
+                const newIndex = target.vertices.length / 2;
+                target.vertices.push(
+                    triangleData.vertices[originalIndex * 2],
+                    triangleData.vertices[originalIndex * 2 + 1]
+                );
+                // ...and map the original index to its new index.
+                vertexMap.set(originalIndex, newIndex);
+            }
+            // Add the new index (for this color category) to the new index list.
+            target.indices.push(vertexMap.get(originalIndex));
+        });
+    }
+
+    return result;
+}
+
+/**
  * Converts an index buffer for triangles into an index buffer for lines.
  * @param {Array<Number>} triangleIndices The array of indices for triangles.
  * @returns {Array<Number>} The array of indices for lines.
@@ -201,4 +300,4 @@ function convertTriangleIndicesToLineIndices(triangleIndices) {
     return lineIndices;
 }
 
-export { removeCollisions, triangulateWithObstacle, convertTriangleIndicesToLineIndices };
+export { updateCollisions, triangulateWithObstacle, getTriangleDensityColor, convertTriangleIndicesToLineIndices };

@@ -6,9 +6,10 @@
  * @param {Array<Number>} data.colors The vertex colors.
  * @param {Array<Number>} [data.indices] Optional: The vertex indices for indexed drawing.
  * @param {GLenum} [data.positionUsage=gl.STATIC_DRAW] The usage hint for the position buffer.
+ * @param {GLenum} [data.colorUsage=gl.STATIC_DRAW] The usage hint for the color buffer.
  * @returns {{position: WebGLBuffer, color: WebGLBuffer, indices: WebGLBuffer|null}}
  */
-function initBuffers(gl, { positions, colors, indices, positionUsage = gl.STATIC_DRAW }) {
+function initBuffers(gl, { positions, colors, indices, positionUsage = gl.STATIC_DRAW, colorUsage = gl.STATIC_DRAW }) {
     // --- Position Buffer ---
     const positionBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
@@ -17,7 +18,7 @@ function initBuffers(gl, { positions, colors, indices, positionUsage = gl.STATIC
     // --- Color Buffer ---
     const colorBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), colorUsage);
 
     // --- Index Buffer (optional) ---
     let indexBuffer = null;
