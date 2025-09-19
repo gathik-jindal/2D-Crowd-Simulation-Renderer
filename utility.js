@@ -54,6 +54,16 @@ function getTransformMatrix(x, y, scale) {
     return transformMatrix;
 }
 
+/**
+ * 
+ * @param {Object} object The obstacle object
+ * @param {Number} maxX Max x value
+ * @param {Number} minX Min x value
+ * @param {Number} maxY Min y value
+ * @param {Number} minY Min y value
+ * @param {Number} minScale Min scale
+ * @param {Number} maxScale Max scale
+ */
 function clamp(object, maxX, minX, maxY, minY, minScale, maxScale) {
     if (object.scale < minScale) object.scale = minScale;
     if (object.scale > maxScale) object.scale = maxScale;

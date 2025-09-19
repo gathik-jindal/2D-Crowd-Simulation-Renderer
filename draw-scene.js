@@ -10,11 +10,7 @@
 function drawObject(gl, programInfo, buffers, transformMatrix, vertexCount, primitiveType, projectionMatrix) {
     // connect the buffers to our program and ask gl to use it
     setPositionAttribute(gl, buffers, programInfo);
-    if (programInfo.attribLocations.vertexColor !== -1) // ignore if no color attribute
-        setColorAttribute(gl, buffers, programInfo);
-    // Tell WebGL which indices to use to index the vertices
-    if (buffers.indices !== -1)
-        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
+    setColorAttribute(gl, buffers, programInfo);
     gl.useProgram(programInfo.program);
 
     // Set the shader uniforms
@@ -29,10 +25,22 @@ function drawObject(gl, programInfo, buffers, transformMatrix, vertexCount, prim
         projectionMatrix,
     );
 
-    const type = gl.UNSIGNED_SHORT;
-    const offset = 0;
-    for (let t of primitiveType)
-        gl.drawElements(t, vertexCount, type, offset);
+    // --- LOGIC TO CHOOSE DRAW COMMAND ---
+    if (buffers.indices) {
+        // If we HAVE an index buffer, use drawElements
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, buffers.indices);
+        const type = gl.UNSIGNED_SHORT;
+        const offset = 0;
+        for (const primitive of primitiveType) {
+            gl.drawElements(primitive, vertexCount, type, offset);
+        }
+    } else {
+        // If we DO NOT have an index buffer, use drawArrays
+        const offset = 0;
+        for (const primitive of primitiveType) {
+            gl.drawArrays(primitive, offset, vertexCount);
+        }
+    }
 }
 
 /**

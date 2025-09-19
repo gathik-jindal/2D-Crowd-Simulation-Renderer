@@ -124,7 +124,7 @@ function createNewPosition(obstacle, minX, maxX, minY, maxY) {
  * @param {number} obstacle.width - The width of the obstacle
  * @param {number} obstacle.scale - The scale factor for the obstacle.
  * @param {number[]} flatPoints - A flat array of points in the format [x1, y1, x2, y2, ...].
- * @returns {{flatPoints: number[], indices: number[]}} An object containing a flat array of
+ * @returns {{vertices: number[], indices: number[]}} An object containing a flat array of
  * vertex coordinates (x1, y1, x2, y2, ...) and a flat array of triangle indices
  * (i1, i2, i3, i4, i5, i6, ...) suitable for rendering with APIs like OpenGL/WebGL.
  * @throws {Error} if the cdt2d library is not available.
@@ -145,10 +145,10 @@ function triangulateWithObstacle(obstacle, flatPoints) {
     const halfLength = (obstacle.length * obstacle.scale) / 2;
     const halfWidth = (obstacle.width * obstacle.scale) / 2;
     const obstacleVertices = [
-        [obstacle.cx - halfLength, obstacle.cy - halfWidth], // Top-left
-        [obstacle.cx + halfLength, obstacle.cy - halfWidth], // Top-right
-        [obstacle.cx + halfLength, obstacle.cy + halfWidth], // Bottom-right
-        [obstacle.cx - halfLength, obstacle.cy + halfWidth]  // Bottom-left
+        [obstacle.x - halfLength, obstacle.y - halfWidth], // Top-left
+        [obstacle.x + halfLength, obstacle.y - halfWidth], // Top-right
+        [obstacle.x + halfLength, obstacle.y + halfWidth], // Bottom-right
+        [obstacle.x - halfLength, obstacle.y + halfWidth]  // Bottom-left
     ];
 
     // 3. Combine the user-provided points and the obstacle's vertices into a single list.
@@ -175,9 +175,30 @@ function triangulateWithObstacle(obstacle, flatPoints) {
 
     // 7. Return the final structure in the requested flat format.
     return {
-        flatPoints: flatPointsResult,
+        vertices: flatPointsResult,
         indices: indices
     };
 }
 
-export { removeCollisions };
+/**
+ * Converts an index buffer for triangles into an index buffer for lines.
+ * @param {Array<Number>} triangleIndices The array of indices for triangles.
+ * @returns {Array<Number>} The array of indices for lines.
+ */
+function convertTriangleIndicesToLineIndices(triangleIndices) {
+    const lineIndices = [];
+    // A triangle is made of 3 indices
+    for (let i = 0; i < triangleIndices.length; i += 3) {
+        const v1 = triangleIndices[i];
+        const v2 = triangleIndices[i + 1];
+        const v3 = triangleIndices[i + 2];
+
+        // Add lines for the triangle edges
+        lineIndices.push(v1, v2);
+        lineIndices.push(v2, v3);
+        lineIndices.push(v3, v1);
+    }
+    return lineIndices;
+}
+
+export { removeCollisions, triangulateWithObstacle, convertTriangleIndicesToLineIndices };

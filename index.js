@@ -1,10 +1,8 @@
-import { initObstacleBuffers } from "./init-obstacle-buffers.js";
-import { initPeopleBuffers } from "./init-people-buffers.js";
-import { initDotBuffers } from "./init-dot-buffers.js";
+import { initBuffers, generateUniformColors } from "./init-buffers.js";
 import { drawObject } from "./draw-scene.js";
 import { calculateMovements, getTransformMatrix } from "./utility.js";
 import { initShaderProgram, updateBuffer } from "./gl-utility.js";
-import { removeCollisions } from "./math.js";
+import { removeCollisions, triangulateWithObstacle, convertTriangleIndicesToLineIndices } from "./math.js";
 
 // ===========================
 // Global variables
@@ -19,8 +17,8 @@ const minY = -100;
 const minScale = 0.1;
 const maxScale = 1.5;
 
-const NUMBER_OF_PEOPLE = 20;
-const NUMBER_OF_DOTS = 20;
+const NUMBER_OF_PEOPLE = 30;
+const NUMBER_OF_DOTS = 40;
 const DOT_SIZE = 2.0; // in canvas units
 
 function main() {
@@ -52,6 +50,9 @@ function main() {
 
   // Set clear color to white, fully opaque
   gl.clearColor(1.0, 1.0, 1.0, 1.0);
+  // Enable alpha blending
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   // Clear the color buffer with specified clear color
   gl.clear(gl.COLOR_BUFFER_BIT);
 
@@ -107,6 +108,8 @@ function main() {
   };
   const peopleProgramInfo = obstacleProgramInfo; // using same shader for now
   const dotProgramInfo = obstacleProgramInfo; // using same shader for now
+  const triangleProgramInfo = obstacleProgramInfo; // using same shader for now
+  const lineProgramInfo = obstacleProgramInfo; // using same shader for now
 
   // ==========================
   // Defining objects
@@ -132,7 +135,7 @@ function main() {
     return array;
   })();
 
-  let dot = (() => {
+  let dots = (() => {
     let array = [];
     for (let i = 0; i < NUMBER_OF_DOTS; i++) {
       array.push(Math.random() * (maxX - minX) + minX, Math.random() * (maxY - minY) + minY);
@@ -140,16 +143,62 @@ function main() {
     return array;
   })();
 
-  // make sure there are no initial collisions
-  const updatedPositions = removeCollisions(obstacle, people, dot, { maxX, minX, maxY, minY });
-  people = updatedPositions.people;
-  dot = updatedPositions.dots;
+  const corners = [
+    minX, maxY, // Top-left
+    maxX, maxY, // Top-right
+    maxX, minY, // Bottom-right
+    minX, minY, // Bottom-left
+  ]
 
-  // Here's where we call the routine that builds all the
-  // objects we'll be drawing.
-  const obstacleBuffers = initObstacleBuffers(gl);
-  const peopleBuffers = initPeopleBuffers(gl, people);
-  const dotBuffers = initDotBuffers(gl, dot);
+  // make sure there are no initial collisions
+  const updatedPositions = removeCollisions(obstacle, people, dots, { maxX, minX, maxY, minY });
+  people = updatedPositions.people;
+  dots = updatedPositions.dots;
+  let triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
+  let lines = { vertices: triangle.vertices, indices: convertTriangleIndicesToLineIndices(triangle.indices) };
+
+  // Here's where we call the routine that builds all the objects we'll be drawing.
+  // --- Obstacle Buffers ---
+  const obstacleBuffers = initBuffers(gl, {
+    positions: [-50, 50, 50, 50, 50, -50, -50, -50],
+    colors: [
+      1.6, 0.32, 2.4, 1.0,
+      1.6, 0.32, 2.4, 1.0,
+      1.6, 0.32, 2.4, 1.0,
+      1.6, 0.32, 2.4, 1.0,
+    ],
+    indices: [0, 1, 2, 0, 2, 3],
+  });
+
+  // --- People Buffers ---
+  const peopleBuffers = initBuffers(gl, {
+    positions: people,
+    colors: generateUniformColors(NUMBER_OF_PEOPLE, [1.0, 0.0, 0.0, 1.0]), // Red
+    positionUsage: gl.DYNAMIC_DRAW,
+  });
+
+  // --- Dot Buffers ---
+  const dotBuffers = initBuffers(gl, {
+    positions: dots,
+    colors: generateUniformColors(NUMBER_OF_DOTS, [0.0, 0.0, 0.0, 1.0]), // Black
+    positionUsage: gl.DYNAMIC_DRAW,
+  });
+
+  // --- Triangle Buffers ---
+  const triangleBuffers = initBuffers(gl, {
+    positions: triangle.vertices,
+    colors: generateUniformColors(triangle.vertices.length / 2, [0.0, 1.0, 0.0, 0.3]), // red, transparent
+    indices: triangle.indices,
+    positionUsage: gl.DYNAMIC_DRAW,
+  });
+
+  // --- Line Buffers ---
+  const lineBuffers = initBuffers(gl, {
+    positions: lines.vertices,
+    colors: generateUniformColors(lines.vertices.length / 2, [0.0, 0.0, 1.0, 1.0]), // Blue
+    indices: lines.indices,
+    positionUsage: gl.DYNAMIC_DRAW,
+  });
 
   // =============================
   // DOM Related events
@@ -192,11 +241,21 @@ function main() {
 
     if (movement) {
       // if there was a movement, update the people and dot positions to remove collisions
-      const updatedPositions = removeCollisions(obstacle, people, dot, { maxX, minX, maxY, minY });
+      const updatedPositions = removeCollisions(obstacle, people, dots, { maxX, minX, maxY, minY });
       people = updatedPositions.people;
-      dot = updatedPositions.dots;
-      updateBuffer(gl, peopleBuffers.position, new Float32Array(people), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, dotBuffers.position, new Float32Array(dot), gl.DYNAMIC_DRAW);
+      dots = updatedPositions.dots;
+      // dots.push(...addCorners(obstacle, maxX, minX, maxY, minY)); // adding corners of the canvas
+      updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.position, new Float32Array(people), gl.DYNAMIC_DRAW);
+      updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.position, new Float32Array(dots), gl.DYNAMIC_DRAW);
+
+      // if there was a movement, update triangulation lines
+      triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
+      lines = { vertices: triangle.vertices, indices: convertTriangleIndicesToLineIndices(triangle.indices) };
+      let vertices = new Float32Array(triangle.vertices);
+      updateBuffer(gl, gl.ARRAY_BUFFER, triangleBuffers.position, vertices, gl.DYNAMIC_DRAW);
+      updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, triangleBuffers.indices, new Uint16Array(triangle.indices), gl.DYNAMIC_DRAW);
+      updateBuffer(gl, gl.ARRAY_BUFFER, lineBuffers.position, vertices, gl.DYNAMIC_DRAW);
+      updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, lineBuffers.indices, new Uint16Array(lines.indices), gl.DYNAMIC_DRAW);
     }
 
     d.innerText = `x: ${obstacle.x}, y: ${obstacle.y}, scale: ${obstacle.scale}`;
@@ -206,8 +265,10 @@ function main() {
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // draw the elements
+    drawObject(gl, triangleProgramInfo, triangleBuffers, mat4.create(), triangle.indices.length, [gl.TRIANGLES], projectionMatrix);
+    drawObject(gl, lineProgramInfo, lineBuffers, mat4.create(), lines.indices.length, [gl.LINES], projectionMatrix);
     drawObject(gl, obstacleProgramInfo, obstacleBuffers, getTransformMatrix(obstacle.x, obstacle.y, obstacle.scale), obstacle.vertexCount, [gl.TRIANGLES], projectionMatrix);
-    drawObject(gl, dotProgramInfo, dotBuffers, mat4.create(), dot.length / 2, [gl.POINTS], projectionMatrix);
+    drawObject(gl, dotProgramInfo, dotBuffers, mat4.create(), dots.length / 2, [gl.POINTS], projectionMatrix);
     drawObject(gl, peopleProgramInfo, peopleBuffers, mat4.create(), people.length / 2, [gl.POINTS], projectionMatrix);
 
     requestAnimationFrame(render);
