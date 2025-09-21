@@ -442,7 +442,7 @@ function main() {
 
     if (movement) {
       // if there was a movement, update the people and dot positions to remove collisions
-      update();
+      update(); // retiangulate since obstacle moved
     }
 
     let lag = now - then;
