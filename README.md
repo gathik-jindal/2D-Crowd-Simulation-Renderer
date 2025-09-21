@@ -28,7 +28,7 @@ This project implements a variety of features required for a 2D crowd simulation
 
 ## Demo
 
-You can view a demo of the application here:[demo](./demo.mp4)
+You can view a demo of the application here: [demo](./demo.mp4)
 
 ![Obstacle Manipulation](./readme-assets/1.png)
 ![Triangle Manipulation](./readme-assets/2.png)
