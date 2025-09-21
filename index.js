@@ -2,8 +2,8 @@ import { initBuffers, generateUniformColors } from "./init-buffers.js";
 import { drawObject } from "./draw-scene.js";
 import { calculateMovements, getTransformMatrix } from "./utility.js";
 import { initShaderProgram, updateBuffer } from "./gl-utility.js";
-import { updateCollisions, triangulateWithObstacle, getTriangleDensityColor, convertTriangleIndicesToLineIndices } from "./math.js";
-import { createSliderEventListeners, getValuesFromSliders } from "./DOM.js";
+import { updateCollisions, triangulateWithObstacle, getTriangleDensity, convertTriangleIndicesToLineIndices, resetAndRegeneratePoints } from "./math.js";
+import { createSliderEventListeners, setupSliders, getValuesFromSliders } from "./DOM.js";
 
 // ===========================
 // Global variables
@@ -18,20 +18,34 @@ const minY = -100;
 const minScale = 0.1;
 const maxScale = 1.5;
 
-let NUMBER_OF_PEOPLE = 10;
+let NUMBER_OF_PEOPLE = 200;
 let NUMBER_OF_DOTS = 40;
 const DOT_SIZE = 2.0; // in canvas units
 let DENSITY = 4 // number of people per triangle
 
-const RED = [1.0, 0.0, 0.0, 0.3];
+const RED = [1.0, 0.0, 0.0, 0.8];
+const RED_SOLID = [1.0, 0.0, 0.0, 1.0];
 const ORANGE = [1.0, 0.5, 0.0, 0.9];
 const GREEN = [0.0, 1.0, 0.0, 0.3];
 const BLACK = [0.0, 0.0, 0.0, 1.0];
-const RED_SOLID = [1.0, 0.0, 0.0, 1.0];
+const BLUE = [0.0, 0.0, 1.0, 1.0];
+const YELLOW = [1.0, 1.0, 0.0, 1.0];
+
+const UNDER_POPULATED_COLOR = BLUE;
+const CORRECT_POPULATED_COLOR = ORANGE;
+const OVER_POPULATED_COLOR = RED;
+const LINE_COLOR = BLACK;
+const OBSTACLE_COLOR = [1.0, 1.0, 1.0, 1.0]; // dark gray
+const PEOPLE_COLOR = YELLOW;
+const DOT_COLOR = BLACK;
+
 
 function main() {
-
+  // =============================
+  // Setting up WebGL context 
+  // =============================
   const d = document.getElementById("debug");
+  setupSliders(NUMBER_OF_DOTS, NUMBER_OF_PEOPLE, DENSITY);
   /** @type {HTMLCanvasElement} */ // this is for vscode intellisense
   const canvas = document.querySelector("#gl-canvas");
   // Initialize the GL context
@@ -166,29 +180,24 @@ function main() {
   dots = updatedPositions.dots;
   let triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
   let lines = { vertices: triangle.vertices, indices: convertTriangleIndicesToLineIndices(triangle.indices) };
-  // color triangles based on density
-  let triangleColors = getTriangleDensityColor(triangle, people, DENSITY);
-  let redTriangles = triangleColors.red;
-  let orangeTriangles = triangleColors.orange;
-  let greenTriangles = triangleColors.green;
+  // get triangles based on density
+  let triangleDensity = getTriangleDensity(triangle, people, DENSITY);
+  let overPopulatedTriangles = triangleDensity.red;
+  let correctPopulatedTriangles = triangleDensity.orange;
+  let underPopulatedTriangles = triangleDensity.blue;
 
   // Here's where we call the routine that builds all the objects we'll be drawing.
   // --- Obstacle Buffers ---
   const obstacleBuffers = initBuffers(gl, {
     positions: [-50, 50, 50, 50, 50, -50, -50, -50],
-    colors: [
-      1.6, 0.32, 2.4, 1.0,
-      1.6, 0.32, 2.4, 1.0,
-      1.6, 0.32, 2.4, 1.0,
-      1.6, 0.32, 2.4, 1.0,
-    ],
+    colors: [...OBSTACLE_COLOR, ...OBSTACLE_COLOR, ...OBSTACLE_COLOR, ...OBSTACLE_COLOR],
     indices: [0, 1, 2, 0, 2, 3],
   });
 
   // --- People Buffers ---
   const peopleBuffers = initBuffers(gl, {
     positions: people,
-    colors: generateUniformColors(NUMBER_OF_PEOPLE, RED_SOLID),
+    colors: generateUniformColors(NUMBER_OF_PEOPLE, PEOPLE_COLOR),
     positionUsage: gl.DYNAMIC_DRAW,
     colorUsage: gl.DYNAMIC_DRAW,
   });
@@ -196,32 +205,32 @@ function main() {
   // --- Dot Buffers ---
   const dotBuffers = initBuffers(gl, {
     positions: dots,
-    colors: generateUniformColors(NUMBER_OF_DOTS, BLACK),
+    colors: generateUniformColors(NUMBER_OF_DOTS, DOT_COLOR),
     positionUsage: gl.DYNAMIC_DRAW,
     colorUsage: gl.DYNAMIC_DRAW,
   });
 
   // --- Triangle Buffers ---
-  const redTriangleBuffers = initBuffers(gl, {
-    positions: redTriangles.vertices,
-    colors: generateUniformColors(redTriangles.vertices.length / 2, RED), // red, transparent
-    indices: redTriangles.indices,
+  const overPopulatedTriangleBuffers = initBuffers(gl, {
+    positions: overPopulatedTriangles.vertices,
+    colors: generateUniformColors(overPopulatedTriangles.vertices.length / 2, OVER_POPULATED_COLOR), // red, transparent
+    indices: overPopulatedTriangles.indices,
     positionUsage: gl.DYNAMIC_DRAW,
     colorUsage: gl.DYNAMIC_DRAW,
   });
 
-  const orangeTriangleBuffers = initBuffers(gl, {
-    positions: orangeTriangles.vertices,
-    colors: generateUniformColors(orangeTriangles.vertices.length / 2, ORANGE), // orange, transparent
-    indices: orangeTriangles.indices,
+  const correctPopulatedTriangleBuffers = initBuffers(gl, {
+    positions: correctPopulatedTriangles.vertices,
+    colors: generateUniformColors(correctPopulatedTriangles.vertices.length / 2, CORRECT_POPULATED_COLOR), // orange, transparent
+    indices: correctPopulatedTriangles.indices,
     positionUsage: gl.DYNAMIC_DRAW,
     colorUsage: gl.DYNAMIC_DRAW,
   });
 
-  const greenTriangleBuffers = initBuffers(gl, {
-    positions: greenTriangles.vertices,
-    colors: generateUniformColors(greenTriangles.vertices.length / 2, GREEN), // green, transparent
-    indices: greenTriangles.indices,
+  const underPopulatedTriangleBuffers = initBuffers(gl, {
+    positions: underPopulatedTriangles.vertices,
+    colors: generateUniformColors(underPopulatedTriangles.vertices.length / 2, UNDER_POPULATED_COLOR), // blue, transparent
+    indices: underPopulatedTriangles.indices,
     positionUsage: gl.DYNAMIC_DRAW,
     colorUsage: gl.DYNAMIC_DRAW,
   });
@@ -229,9 +238,10 @@ function main() {
   // --- Line Buffers ---
   const lineBuffers = initBuffers(gl, {
     positions: lines.vertices,
-    colors: generateUniformColors(lines.vertices.length / 2, [0.0, 0.0, 1.0, 1.0]), // Blue
+    colors: generateUniformColors(lines.vertices.length / 2, LINE_COLOR), // Blue
     indices: lines.indices,
     positionUsage: gl.DYNAMIC_DRAW,
+    colorUsage: gl.DYNAMIC_DRAW,
   });
 
   // =============================
@@ -265,76 +275,92 @@ function main() {
     mouseY = worldCoords[1];
   });
 
+  let update = () => { }; // dummy function
+
+  // Handle sliders
   createSliderEventListeners(() => {
     let values = getValuesFromSliders();
     NUMBER_OF_DOTS = values.numDots;
     NUMBER_OF_PEOPLE = values.numPeople;
     DENSITY = values.density;
 
-    updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.color, new Float32Array(generateUniformColors(NUMBER_OF_DOTS, BLACK)), gl.DYNAMIC_DRAW);
-    updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.color, new Float32Array(generateUniformColors(NUMBER_OF_PEOPLE, RED_SOLID)), gl.DYNAMIC_DRAW);
-  })
+    const regenerated = resetAndRegeneratePoints(gl, obstacle, { maxX, minX, maxY, minY }, peopleBuffers, dotBuffers, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE, dots, people, lineBuffers);
+    people = regenerated.people;
+    dots = regenerated.dots;
 
+    update();
+  });
+
+  // =============================
+  // Update function
+  // =============================
+  update = () => {
+    const updatedPositions = updateCollisions(obstacle, people, dots, { maxX, minX, maxY, minY }, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE);
+    people = updatedPositions.people;
+    dots = updatedPositions.dots;
+    updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.position, new Float32Array(people), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.position, new Float32Array(dots), gl.DYNAMIC_DRAW);
+
+    // if there was a movement, update triangulation lines
+    triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
+    lines = { vertices: triangle.vertices, indices: convertTriangleIndicesToLineIndices(triangle.indices) };
+    triangleDensity = getTriangleDensity(triangle, people, DENSITY);
+    overPopulatedTriangles = triangleDensity.red;
+    correctPopulatedTriangles = triangleDensity.orange;
+    underPopulatedTriangles = triangleDensity.blue;
+    let vertices = new Float32Array(triangle.vertices);
+
+    // red triangles
+    updateBuffer(gl, gl.ARRAY_BUFFER, overPopulatedTriangleBuffers.position, new Float32Array(overPopulatedTriangles.vertices), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, overPopulatedTriangleBuffers.color, new Float32Array(generateUniformColors(overPopulatedTriangles.vertices.length / 2, OVER_POPULATED_COLOR)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, overPopulatedTriangleBuffers.indices, new Uint16Array(overPopulatedTriangles.indices), gl.DYNAMIC_DRAW);
+
+    // orange triangles
+    updateBuffer(gl, gl.ARRAY_BUFFER, correctPopulatedTriangleBuffers.position, new Float32Array(correctPopulatedTriangles.vertices), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, correctPopulatedTriangleBuffers.color, new Float32Array(generateUniformColors(correctPopulatedTriangles.vertices.length / 2, CORRECT_POPULATED_COLOR)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, correctPopulatedTriangleBuffers.indices, new Uint16Array(correctPopulatedTriangles.indices), gl.DYNAMIC_DRAW);
+
+    // blue triangles
+    updateBuffer(gl, gl.ARRAY_BUFFER, underPopulatedTriangleBuffers.position, new Float32Array(underPopulatedTriangles.vertices), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, underPopulatedTriangleBuffers.color, new Float32Array(generateUniformColors(underPopulatedTriangles.vertices.length / 2, UNDER_POPULATED_COLOR)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, underPopulatedTriangleBuffers.indices, new Uint16Array(underPopulatedTriangles.indices), gl.DYNAMIC_DRAW);
+
+    // lines
+    updateBuffer(gl, gl.ARRAY_BUFFER, lineBuffers.position, vertices, gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, lineBuffers.color, new Float32Array(generateUniformColors(lines.vertices.length / 2, LINE_COLOR)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, lineBuffers.indices, new Uint16Array(lines.indices), gl.DYNAMIC_DRAW);
+  }
 
   // ====================================
   // Draw scene
   // ====================================
+  let then = 0;
   function render(now) {
     // calculate movements
     let movement = calculateMovements(keyboardEvents, obstacle, maxX, minX, maxY, minY, minScale, maxScale, keyboardSensitivity, steps);
 
     if (movement) {
       // if there was a movement, update the people and dot positions to remove collisions
-      const updatedPositions = updateCollisions(obstacle, people, dots, { maxX, minX, maxY, minY }, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE);
-      people = updatedPositions.people;
-      dots = updatedPositions.dots;
-      updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.position, new Float32Array(people), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.position, new Float32Array(dots), gl.DYNAMIC_DRAW);
-
-      // if there was a movement, update triangulation lines
-      triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
-      lines = { vertices: triangle.vertices, indices: convertTriangleIndicesToLineIndices(triangle.indices) };
-      triangleColors = getTriangleDensityColor(triangle, people, DENSITY);
-      redTriangles = triangleColors.red;
-      orangeTriangles = triangleColors.orange;
-      greenTriangles = triangleColors.green;
-      let vertices = new Float32Array(triangle.vertices);
-
-      // red triangles
-      updateBuffer(gl, gl.ARRAY_BUFFER, redTriangleBuffers.position, new Float32Array(redTriangles.vertices), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ARRAY_BUFFER, redTriangleBuffers.color, new Float32Array(generateUniformColors(redTriangles.vertices.length / 2, RED)), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, redTriangleBuffers.indices, new Uint16Array(redTriangles.indices), gl.DYNAMIC_DRAW);
-
-      // orange triangles
-      updateBuffer(gl, gl.ARRAY_BUFFER, orangeTriangleBuffers.position, new Float32Array(orangeTriangles.vertices), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ARRAY_BUFFER, orangeTriangleBuffers.color, new Float32Array(generateUniformColors(orangeTriangles.vertices.length / 2, ORANGE)), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, orangeTriangleBuffers.indices, new Uint16Array(orangeTriangles.indices), gl.DYNAMIC_DRAW);
-
-      // green triangles
-      updateBuffer(gl, gl.ARRAY_BUFFER, greenTriangleBuffers.position, new Float32Array(greenTriangles.vertices), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ARRAY_BUFFER, greenTriangleBuffers.color, new Float32Array(generateUniformColors(greenTriangles.vertices.length / 2, GREEN)), gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, greenTriangleBuffers.indices, new Uint16Array(greenTriangles.indices), gl.DYNAMIC_DRAW);
-
-      // lines
-      updateBuffer(gl, gl.ARRAY_BUFFER, lineBuffers.position, vertices, gl.DYNAMIC_DRAW);
-      updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, lineBuffers.indices, new Uint16Array(lines.indices), gl.DYNAMIC_DRAW);
+      update();
     }
 
-    d.innerText = `x: ${obstacle.x}, y: ${obstacle.y}, scale: ${obstacle.scale}, rotation: ${obstacle.rotation}`;
+    let lag = now - then;
+    d.innerText = `x: ${Math.round(obstacle.x)}, y: ${Math.round(obstacle.y)}, scale: ${Math.round(obstacle.scale * 100)}%, rotation: ${obstacle.rotation}, lag: ${Math.round(lag)}ms`;
 
     // Clear the canvas before we start drawing on it.
     gl.clearColor(1.0, 1.0, 1.0, 1.0); // Set background to white
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // draw the elements
-    drawObject(gl, triangleProgramInfo, redTriangleBuffers, mat4.create(), redTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
-    drawObject(gl, triangleProgramInfo, orangeTriangleBuffers, mat4.create(), orangeTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
-    drawObject(gl, triangleProgramInfo, greenTriangleBuffers, mat4.create(), greenTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
+    drawObject(gl, triangleProgramInfo, overPopulatedTriangleBuffers, mat4.create(), overPopulatedTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
+    drawObject(gl, triangleProgramInfo, correctPopulatedTriangleBuffers, mat4.create(), correctPopulatedTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
+    drawObject(gl, triangleProgramInfo, underPopulatedTriangleBuffers, mat4.create(), underPopulatedTriangles.indices.length, [gl.TRIANGLES], projectionMatrix);
     drawObject(gl, lineProgramInfo, lineBuffers, mat4.create(), lines.indices.length, [gl.LINES], projectionMatrix);
     drawObject(gl, obstacleProgramInfo, obstacleBuffers, getTransformMatrix(obstacle.x, obstacle.y, obstacle.scale, obstacle.rotation), obstacle.vertexCount, [gl.TRIANGLES], projectionMatrix);
     drawObject(gl, dotProgramInfo, dotBuffers, mat4.create(), dots.length / 2, [gl.POINTS], projectionMatrix);
     drawObject(gl, peopleProgramInfo, peopleBuffers, mat4.create(), people.length / 2, [gl.POINTS], projectionMatrix);
 
+    then = now;
     requestAnimationFrame(render);
   }
 

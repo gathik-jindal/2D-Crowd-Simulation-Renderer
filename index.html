@@ -19,7 +19,7 @@
     height: calc(100vh - 18px);
     display: flex;
     flex-direction: row;
-    gap: 20px;
+    /* gap: 20px; */
     justify-content: center;
     align-items: center;
     background-color: yellow;
@@ -54,6 +54,12 @@
     width: 25%;
     height: 100%;
     padding: 10px;
+    padding-right: 75px;
+  }
+
+  #title {
+    font-size: xx-large;
+    font-weight: bold;
   }
 </style>
 
@@ -64,12 +70,12 @@
   </div>
   <div id="sliders">
     <!-- Contains sliders for dots and people -->
-    <div> Use the sliders to change the number of dots and people in the scene.
+    <div id="title"> Use the sliders to change the number of dots and people in the scene.
       <br /> Use w/a/s/d to move the obstacle, q/e to rotate, and o/p to scale.
     </div>
     <div>
       <label for="dots">Number of Dots: </label>
-      <input type="range" id="dots" name="dots" min="0" max="500" value="100" />
+      <input type="range" id="dots" name="dots" min="0" max="250" value="100" />
       <span id="dots-value">100</span>
     </div>
 
@@ -81,7 +87,7 @@
 
     <div>
       <label for="density">Number of Density: </label>
-      <input type="range" id="density" name="density" min="0" max="50" value="4" />
+      <input type="range" id="density" name="density" min="0" max="25" value="4" />
       <span id="density-value">4</span>
     </div>
   </div>

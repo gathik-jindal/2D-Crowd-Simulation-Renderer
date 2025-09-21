@@ -19,6 +19,23 @@ function getValuesFromSliders() {
 }
 
 /**
+ * Sets up the sliders with initial values.
+ * @param {Number} dots The number of dots
+ * @param {Number} people The number of people
+ * @param {Number} density The density value
+ */
+function setupSliders(dots, people, density) {
+    const sliders = ["dots", "people", "density"];
+    const values = [dots, people, density];
+    const valueIds = ["dots-value", "people-value", "density-value"];
+    sliders.forEach((id, index) => {
+        const slider = document.getElementById(id);
+        slider.value = values[index];
+        document.getElementById(valueIds[index]).innerText = values[index];
+    });
+}
+
+/**
  * Creates event listeners for the slider inputs.
  * @param {*} onChange
  */
@@ -30,4 +47,4 @@ function createSliderEventListeners(onChange) {
     });
 }
 
-export { createSliderEventListeners, getValuesFromSliders };
+export { createSliderEventListeners, setupSliders, getValuesFromSliders };

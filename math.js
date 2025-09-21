@@ -1,3 +1,9 @@
+import { updateBuffer } from "./gl-utility.js";
+import { generateUniformColors } from "./init-buffers.js";
+
+const RED_SOLID = [1.0, 0.0, 0.0, 1.0];
+const BLACK = [0.0, 0.0, 0.0, 1.0];
+
 /**
  * This function removes people and dots that collide with a given obstacle position and adds them back within the defined boundaries.
  * @param {p1: Array<Number>, p2: Array<Number>, p3: Array<Number>, p4: Array<Number>, } obstacle The obstacle's position
@@ -183,7 +189,7 @@ function triangulateWithObstacle(obstacle, flatPoints) {
  * This function assigns a color to each triangle based on the density of people within it.
  * Triangles with a density above the specified threshold are colored red (overpopulated),
  * those with a density equal to the threshold are colored orange (correctly populated),
- * and those below are colored green (underpopulated).
+ * and those below are colored blue (underpopulated).
  *
  * @param {{vertices: Array<Number>, indices: Array<Number>}} triangleData The complete triangulation data.
  * @param {Array<Number>} people A flat array of people positions [x1, y1, x2, y2, ...].
@@ -191,10 +197,10 @@ function triangulateWithObstacle(obstacle, flatPoints) {
  * @returns {{
  * red: {vertices: Array<Number>, indices: Array<Number>},
  * orange: {vertices: Array<Number>, indices: Array<Number>},
- * green: {vertices: Array<Number>, indices: Array<Number>}
+ * blue: {vertices: Array<Number>, indices: Array<Number>}
  * }} An object containing the separated geometry for each density color.
  */
-function getTriangleDensityColor(triangleData, people, densityThreshold) {
+function getTriangleDensity(triangleData, people, densityThreshold) {
     // Helper function to check if a point is inside a triangle using barycentric coordinates.
     const isPointInTriangle = (px, py, v1x, v1y, v2x, v2y, v3x, v3y) => {
         const d1 = (px - v2x) * (v1y - v2y) - (v1x - v2x) * (py - v2y);
@@ -209,7 +215,7 @@ function getTriangleDensityColor(triangleData, people, densityThreshold) {
     const result = {
         red: { vertices: [], indices: [] },    // Overpopulated
         orange: { vertices: [], indices: [] }, // Correctly populated
-        green: { vertices: [], indices: [] },  // Underpopulated
+        blue: { vertices: [], indices: [] },  // Underpopulated
     };
 
     // To avoid duplicating vertex data, we use maps to track which vertices
@@ -217,7 +223,7 @@ function getTriangleDensityColor(triangleData, people, densityThreshold) {
     const vertexMaps = {
         red: new Map(),
         orange: new Map(),
-        green: new Map(),
+        blue: new Map(),
     };
 
     // 1. Iterate through each triangle defined in the index buffer.
@@ -250,7 +256,7 @@ function getTriangleDensityColor(triangleData, people, densityThreshold) {
         } else if (peopleCount === densityThreshold) {
             category = 'orange';
         } else {
-            category = 'green';
+            category = 'blue';
         }
 
         const target = result[category];
@@ -299,4 +305,56 @@ function convertTriangleIndicesToLineIndices(triangleIndices) {
     return lineIndices;
 }
 
-export { updateCollisions, triangulateWithObstacle, getTriangleDensityColor, convertTriangleIndicesToLineIndices };
+/**
+ * Regenerates the people and dots arrays based on global counts,
+ * removes initial collisions, and updates their WebGL buffers.
+ * @param {WebGLRenderingContext} gl The WebGL rendering context
+ * @param {object} obstacle The obstacle definition
+ * @param {object} bounds The boundary limits { maxX, minX, maxY, minY }
+ * @param {object} peopleBuffers The people buffers { position: WebGLBuffer, color: WebGLBuffer }
+ * @param {object} dotBuffers The dot buffers { position: WebGLBuffer, color: WebGLBuffer }
+ * @param {Number} NUMBER_OF_DOTS The total number of dots to generate
+ * @param {Number} NUMBER_OF_PEOPLE The total number of people to generate
+ * @param {Array<Number>} dots The current array of dot positions
+ * @param {Array<Number>} people The current array of people positions
+ * @returns {people: Array<Number>, dots: Array<Number>} The new arrays of people and dots positions
+ */
+function resetAndRegeneratePoints(gl, obstacle, bounds, peopleBuffers, dotBuffers, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE, dots, people) {
+    let newPeople = [];
+    if (NUMBER_OF_PEOPLE < people.length / 2) {
+        newPeople.push(...people.slice(0, NUMBER_OF_PEOPLE * 2));
+    }
+    else if (NUMBER_OF_PEOPLE == people.length / 2) {
+        newPeople.push(...people);
+    }
+    else if (NUMBER_OF_PEOPLE > people.length / 2) {
+        newPeople.push(...people);
+        for (let i = 0; i < NUMBER_OF_PEOPLE - people.length / 2; i++) {
+            newPeople.push(Math.random() * (bounds.maxX - bounds.minX) + bounds.minX, Math.random() * (bounds.maxY - bounds.minY) + bounds.minY);
+        }
+    }
+
+    let newDots = [];
+    if (NUMBER_OF_DOTS < dots.length / 2) {
+        newDots.push(...dots.slice(0, NUMBER_OF_DOTS * 2));
+    }
+    else if (NUMBER_OF_DOTS == dots.length / 2) {
+        newDots.push(...dots);
+    }
+    else if (NUMBER_OF_DOTS > dots.length / 2) {
+        newDots.push(...dots);
+        for (let i = 0; i < NUMBER_OF_DOTS - dots.length / 2; i++) {
+            newDots.push(Math.random() * (bounds.maxX - bounds.minX) + bounds.minX, Math.random() * (bounds.maxY - bounds.minY) + bounds.minY);
+        }
+    }
+
+    const updatedPositions = { people: newPeople, dots: newDots };
+
+    // The updation of location buffers is taken care in the main update loop
+    updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.color, new Float32Array(generateUniformColors(updatedPositions.people.length / 2, RED_SOLID)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.color, new Float32Array(generateUniformColors(updatedPositions.dots.length / 2, BLACK)), gl.DYNAMIC_DRAW);
+
+    return { people: updatedPositions.people, dots: updatedPositions.dots };
+}
+
+export { updateCollisions, triangulateWithObstacle, getTriangleDensity, convertTriangleIndicesToLineIndices, resetAndRegeneratePoints };
