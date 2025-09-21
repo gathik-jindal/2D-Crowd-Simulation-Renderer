@@ -26,6 +26,9 @@ This project implements a variety of features required for a 2D crowd simulation
 - **Interactive Crowd Movement**: Individual "people" can be clicked and dragged to new locations, which updates the density coloring of the affected triangles.
 - **Dynamic Controls**: Sliders allow for real-time adjustment of the number of dots, the number of people, and the population density threshold.
 
+![Obstacle Manipulation](./readme-assets/1.png)
+![Triangle Manipulation](./readme-assets/2.png)
+
 ## Controls
 
 ### Obstacle Manipulation
