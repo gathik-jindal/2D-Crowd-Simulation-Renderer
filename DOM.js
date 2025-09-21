@@ -47,4 +47,30 @@ function createSliderEventListeners(onChange) {
     });
 }
 
-export { createSliderEventListeners, setupSliders, getValuesFromSliders };
+/**
+ * Converts mouse event coordinates to WebGL world coordinates.
+ * @param {MouseEvent} event The mouse event.
+ * @param {HTMLCanvasElement} canvas The canvas element.
+ * @param {mat4} projectionMatrix The projection matrix.
+ * @returns {{x: Number, y: Number}} The world coordinates.
+ */
+function getMouseWorldCoordinates(event, canvas, projectionMatrix) {
+    const rect = canvas.getBoundingClientRect();
+    const pixelX = event.clientX - rect.left;
+    const pixelY = event.clientY - rect.top;
+
+    const clipX = (pixelX / canvas.width) * 2 - 1;
+    const clipY = (pixelY / canvas.height) * -2 + 1;
+
+    const clipCoords = vec4.fromValues(clipX, clipY, 0, 1);
+    const invProjectionMatrix = mat4.create();
+    mat4.invert(invProjectionMatrix, projectionMatrix);
+
+    const worldCoords = vec4.create();
+    vec4.transformMat4(worldCoords, clipCoords, invProjectionMatrix);
+
+    return { x: worldCoords[0], y: worldCoords[1] };
+}
+
+
+export { createSliderEventListeners, setupSliders, getValuesFromSliders, getMouseWorldCoordinates };

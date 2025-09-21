@@ -1,8 +1,6 @@
 import { updateBuffer } from "./gl-utility.js";
 import { generateUniformColors } from "./init-buffers.js";
-
-const RED_SOLID = [1.0, 0.0, 0.0, 1.0];
-const BLACK = [0.0, 0.0, 0.0, 1.0];
+import { PEOPLE_COLOR, DOT_COLOR } from "./index.js";
 
 /**
  * This function removes people and dots that collide with a given obstacle position and adds them back within the defined boundaries.
@@ -351,8 +349,8 @@ function resetAndRegeneratePoints(gl, obstacle, bounds, peopleBuffers, dotBuffer
     const updatedPositions = { people: newPeople, dots: newDots };
 
     // The updation of location buffers is taken care in the main update loop
-    updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.color, new Float32Array(generateUniformColors(updatedPositions.people.length / 2, RED_SOLID)), gl.DYNAMIC_DRAW);
-    updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.color, new Float32Array(generateUniformColors(updatedPositions.dots.length / 2, BLACK)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.color, new Float32Array(generateUniformColors(updatedPositions.people.length / 2, PEOPLE_COLOR)), gl.DYNAMIC_DRAW);
+    updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.color, new Float32Array(generateUniformColors(updatedPositions.dots.length / 2, DOT_COLOR)), gl.DYNAMIC_DRAW);
 
     return { people: updatedPositions.people, dots: updatedPositions.dots };
 }

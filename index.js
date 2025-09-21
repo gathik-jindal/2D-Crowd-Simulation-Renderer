@@ -3,7 +3,7 @@ import { drawObject } from "./draw-scene.js";
 import { calculateMovements, getTransformMatrix } from "./utility.js";
 import { initShaderProgram, updateBuffer } from "./gl-utility.js";
 import { updateCollisions, triangulateWithObstacle, getTriangleDensity, convertTriangleIndicesToLineIndices, resetAndRegeneratePoints } from "./math.js";
-import { createSliderEventListeners, setupSliders, getValuesFromSliders } from "./DOM.js";
+import { createSliderEventListeners, setupSliders, getValuesFromSliders, getMouseWorldCoordinates } from "./DOM.js";
 
 // ===========================
 // Global variables
@@ -26,18 +26,21 @@ let DENSITY = 4 // number of people per triangle
 const RED = [1.0, 0.0, 0.0, 0.8];
 const RED_SOLID = [1.0, 0.0, 0.0, 1.0];
 const ORANGE = [1.0, 0.5, 0.0, 0.9];
-const GREEN = [0.0, 1.0, 0.0, 0.3];
+const GREEN = [0.0, 1.0, 0.0, 1.0];
 const BLACK = [0.0, 0.0, 0.0, 1.0];
 const BLUE = [0.0, 0.0, 1.0, 1.0];
 const YELLOW = [1.0, 1.0, 0.0, 1.0];
 
 const UNDER_POPULATED_COLOR = BLUE;
-const CORRECT_POPULATED_COLOR = ORANGE;
+const CORRECT_POPULATED_COLOR = GREEN;
 const OVER_POPULATED_COLOR = RED;
 const LINE_COLOR = BLACK;
 const OBSTACLE_COLOR = [1.0, 1.0, 1.0, 1.0]; // dark gray
 const PEOPLE_COLOR = YELLOW;
 const DOT_COLOR = BLACK;
+
+let isDragging = false;
+let draggedPointIndex = -1; // The index of the person being dragged
 
 
 function main() {
@@ -254,25 +257,53 @@ function main() {
   document.addEventListener('keyup', (event) => {
     keyboardEvents[event.key] = false;
   })
-  // Mouse click
-  let mouseX = 0;
-  let mouseY = 0;
-  canvas.addEventListener('click', (event) => {
-    const rect = canvas.getBoundingClientRect();
 
-    const pixelX = event.clientX - rect.left;
-    const pixelY = event.clientY - rect.top;
-    const clipX = (pixelX / canvas.width) * 2 - 1;
-    const clipY = (pixelY / canvas.height) * -2 + 1; // Y is inverted
-    const clipCoords = vec4.fromValues(clipX, clipY, 0, 1); // vec4 for 4x4 matrix math
+  // Mouse click (dragging people)
+  const pickRadius = 5.0; // in world units
 
-    const invProjectionMatrix = mat4.create();
-    mat4.invert(invProjectionMatrix, projectionMatrix); // projectionMatrix from main()
-    const worldCoords = vec4.create();
-    vec4.transformMat4(worldCoords, clipCoords, invProjectionMatrix);
+  canvas.addEventListener('mousedown', (event) => {
+    const mouseWorld = getMouseWorldCoordinates(event, canvas, projectionMatrix);
+    let closestDistSq = Infinity;
 
-    mouseX = worldCoords[0];
-    mouseY = worldCoords[1];
+    for (let i = 0; i < people.length; i += 2) {
+      const personX = people[i];
+      const personY = people[i + 1];
+      const dx = mouseWorld.x - personX;
+      const dy = mouseWorld.y - personY;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq < pickRadius * pickRadius && distSq < closestDistSq) {
+        closestDistSq = distSq;
+        draggedPointIndex = i / 2;
+        break;
+      }
+    }
+
+    if (draggedPointIndex !== -1) {
+      isDragging = true;
+    }
+  });
+
+  canvas.addEventListener('mousemove', (event) => {
+    if (!isDragging) {
+      return;
+    }
+
+    const mouseWorld = getMouseWorldCoordinates(event, canvas, projectionMatrix);
+
+    people[draggedPointIndex * 2] = mouseWorld.x;
+    people[draggedPointIndex * 2 + 1] = mouseWorld.y;
+
+    updateBuffer(gl, gl.ARRAY_BUFFER, peopleBuffers.position, new Float32Array(people), gl.DYNAMIC_DRAW);
+  });
+
+  canvas.addEventListener('mouseup', (event) => {
+    if (isDragging) {
+      isDragging = false;
+      draggedPointIndex = -1;
+
+      update(); // update collisions and colors after dragging
+    }
   });
 
   let update = () => { }; // dummy function
@@ -369,3 +400,5 @@ function main() {
 }
 
 main();
+
+export { PEOPLE_COLOR, DOT_COLOR };
