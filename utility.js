@@ -6,36 +6,36 @@
  */
 function calculateMovements(keyboardEvents, object, maxX, minX, maxY, minY, minScale, maxScale, keyboardSensitivity = 1, steps = 3) {
     let movement = false;
-    if (keyboardEvents['w']) {
+    if (keyboardEvents['w'] || keyboardEvents['ArrowUp'] || keyboardEvents['W']) {
         object.y += steps * keyboardSensitivity;
         movement = true;
     }
-    if (keyboardEvents['s']) {
+    if (keyboardEvents['s'] || keyboardEvents['ArrowDown'] || keyboardEvents['S']) {
         object.y -= steps * keyboardSensitivity;
         movement = true;
     }
-    if (keyboardEvents['a']) {
+    if (keyboardEvents['a'] || keyboardEvents['ArrowLeft'] || keyboardEvents['A']) {
         object.x -= steps * keyboardSensitivity;
         movement = true;
     }
-    if (keyboardEvents['d']) {
+    if (keyboardEvents['d'] || keyboardEvents['ArrowRight'] || keyboardEvents['D']) {
         object.x += steps * keyboardSensitivity;
         movement = true;
     }
-    if (keyboardEvents['q']) {
+    if (keyboardEvents['q'] || keyboardEvents['Q']) {
         object.rotation += 1 * keyboardSensitivity;
         movement = true;
     }
-    if (keyboardEvents['e']) {
+    if (keyboardEvents['e'] || keyboardEvents['E']) {
         object.rotation -= 1 * keyboardSensitivity;
         movement = true;
     }
 
-    if (keyboardEvents['o']) {
+    if (keyboardEvents['o'] || keyboardEvents['O']) {
         object.scale += 0.01 * keyboardSensitivity;
         movement = true;
     }
-    if (keyboardEvents['p']) {
+    if (keyboardEvents['p'] || keyboardEvents['P']) {
         object.scale -= 0.01 * keyboardSensitivity;
         movement = true;
     }
