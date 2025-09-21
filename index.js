@@ -2,7 +2,7 @@ import { initBuffers, generateUniformColors } from "./init-buffers.js";
 import { drawObject } from "./draw-scene.js";
 import { calculateMovements, getTransformMatrix } from "./utility.js";
 import { initShaderProgram, updateBuffer } from "./gl-utility.js";
-import { updateCollisions, triangulateWithObstacle, getTriangleDensity, convertTriangleIndicesToLineIndices, resetAndRegeneratePoints } from "./math.js";
+import { updateCollisions, triangulateWithObstacle, getTriangleDensity, convertTriangleIndicesToLineIndices, resetAndRegeneratePoints, findClosestEdge, getObstacleCorners } from "./math.js";
 import { createSliderEventListeners, setupSliders, getValuesFromSliders, getMouseWorldCoordinates } from "./DOM.js";
 
 // ===========================
@@ -25,22 +25,25 @@ let DENSITY = 4 // number of people per triangle
 
 const RED = [1.0, 0.0, 0.0, 0.8];
 const RED_SOLID = [1.0, 0.0, 0.0, 1.0];
-const ORANGE = [1.0, 0.5, 0.0, 0.9];
+const ORANGE = [1.0, 0.5, 0.0, 1.0];
 const GREEN = [0.0, 1.0, 0.0, 1.0];
 const BLACK = [0.0, 0.0, 0.0, 1.0];
 const BLUE = [0.0, 0.0, 1.0, 1.0];
 const YELLOW = [1.0, 1.0, 0.0, 1.0];
+const PURPLE = [0.5, 0.0, 0.5, 1.0];
 
 const UNDER_POPULATED_COLOR = BLUE;
 const CORRECT_POPULATED_COLOR = GREEN;
 const OVER_POPULATED_COLOR = RED;
 const LINE_COLOR = BLACK;
-const OBSTACLE_COLOR = [1.0, 1.0, 1.0, 1.0]; // dark gray
+const OBSTACLE_COLOR = PURPLE;
 const PEOPLE_COLOR = YELLOW;
 const DOT_COLOR = BLACK;
 
 let isDragging = false;
-let draggedPointIndex = -1; // The index of the person being dragged
+let draggedPointIndex = -1; // the index of the person being dragged
+let editMode = 'none'; // can be 'none', 'addTriangle', or 'deleteEdge'
+let triangleSelection = []; // stores the indices of vertices for creating a new triangle
 
 
 function main() {
@@ -263,24 +266,72 @@ function main() {
 
   canvas.addEventListener('mousedown', (event) => {
     const mouseWorld = getMouseWorldCoordinates(event, canvas, projectionMatrix);
-    let closestDistSq = Infinity;
+    const allTriPoints = dots.concat(corners, ...getObstacleCorners(obstacle)); // all possible points for triangle creation
 
-    for (let i = 0; i < people.length; i += 2) {
-      const personX = people[i];
-      const personY = people[i + 1];
-      const dx = mouseWorld.x - personX;
-      const dy = mouseWorld.y - personY;
-      const distSq = dx * dx + dy * dy;
+    // --- MODE: ADD TRIANGLE ---
+    if (editMode === 'addTriangle') {
+      let closestDistSq = Infinity;
+      let pickedVertexIndex = -1;
 
-      if (distSq < pickRadius * pickRadius && distSq < closestDistSq) {
-        closestDistSq = distSq;
-        draggedPointIndex = i / 2;
-        break;
+      // find the closest vertex (dot or corner) to the click
+      for (let i = 0; i < allTriPoints.length; i += 2) {
+        const dx = mouseWorld.x - allTriPoints[i];
+        const dy = mouseWorld.y - allTriPoints[i + 1];
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < pickRadius * pickRadius && distSq < closestDistSq) {
+          closestDistSq = distSq;
+          pickedVertexIndex = i / 2;
+        }
+      }
+
+      if (pickedVertexIndex !== -1 && !triangleSelection.includes(pickedVertexIndex)) {
+        triangleSelection.push(pickedVertexIndex);
+        editModeStatus.innerText = `Current Mode: Add Triangle (selected ${triangleSelection.length}/3 points)`;
+
+        // if we have selected 3 points, create the new triangle
+        if (triangleSelection.length === 3) {
+          triangle.indices.push(...triangleSelection);
+          triangleSelection = [];
+          editModeStatus.innerText = "Current Mode: Add Triangle (select 3 points)";
+          update(false);
+        }
       }
     }
+    // --- MODE: DELETE EDGE ---
+    else if (editMode === 'deleteEdge') {
+      const closest = findClosestEdge(mouseWorld, triangle.vertices, triangle.indices);
 
-    if (draggedPointIndex !== -1) {
-      isDragging = true;
+      if (closest && closest.distance < pickRadius) {
+        const [v1, v2] = closest.edge;
+        const newIndices = [];
+        // filter out any triangle that contains the selected edge
+        for (let i = 0; i < triangle.indices.length; i += 3) {
+          const tri = [triangle.indices[i], triangle.indices[i + 1], triangle.indices[i + 2]];
+          if (!(tri.includes(v1) && tri.includes(v2))) {
+            newIndices.push(...tri);
+          }
+        }
+        triangle.indices = newIndices;
+        update(false); // no need to retriangulate
+      }
+    }
+    // --- MODE: NONE (DRAG PEOPLE) ---
+    else {
+      let closestDistSq = Infinity;
+      draggedPointIndex = -1; // reset before checking
+      for (let i = 0; i < people.length; i += 2) {
+        const dx = mouseWorld.x - people[i];
+        const dy = mouseWorld.y - people[i + 1];
+        const distSq = dx * dx + dy * dy;
+        if (distSq < pickRadius * pickRadius && distSq < closestDistSq) {
+          closestDistSq = distSq;
+          draggedPointIndex = i / 2;
+        }
+      }
+      if (draggedPointIndex !== -1) {
+        isDragging = true;
+      }
     }
   });
 
@@ -302,11 +353,28 @@ function main() {
       isDragging = false;
       draggedPointIndex = -1;
 
-      update(); // update collisions and colors after dragging
+      update(false); // don't retriangulate, just update densities
     }
   });
 
-  let update = () => { }; // dummy function
+  const editModeStatus = document.getElementById("edit-mode-status");
+  document.getElementById("mode-none").addEventListener('click', () => {
+    editMode = 'none';
+    triangleSelection = []; // clear selection when changing mode
+    editModeStatus.innerText = "Current Mode: None (Drag people)";
+  });
+  document.getElementById("mode-add").addEventListener('click', () => {
+    editMode = 'addTriangle';
+    triangleSelection = [];
+    editModeStatus.innerText = "Current Mode: Add Triangle (select 3 points)";
+  });
+  document.getElementById("mode-delete").addEventListener('click', () => {
+    editMode = 'deleteEdge';
+    triangleSelection = [];
+    editModeStatus.innerText = "Current Mode: Delete Edge (click an edge)";
+  });
+
+  let update = (retriangulate) => { }; // prototype function
 
   // Handle sliders
   createSliderEventListeners(() => {
@@ -319,13 +387,13 @@ function main() {
     people = regenerated.people;
     dots = regenerated.dots;
 
-    update();
+    update(false);
   });
 
   // =============================
   // Update function
   // =============================
-  update = () => {
+  update = (retriangulate = true) => {
     const updatedPositions = updateCollisions(obstacle, people, dots, { maxX, minX, maxY, minY }, NUMBER_OF_DOTS, NUMBER_OF_PEOPLE);
     people = updatedPositions.people;
     dots = updatedPositions.dots;
@@ -333,13 +401,14 @@ function main() {
     updateBuffer(gl, gl.ARRAY_BUFFER, dotBuffers.position, new Float32Array(dots), gl.DYNAMIC_DRAW);
 
     // if there was a movement, update triangulation lines
-    triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
-    lines = { vertices: triangle.vertices, indices: convertTriangleIndicesToLineIndices(triangle.indices) };
+    if (retriangulate)
+      triangle = triangulateWithObstacle(obstacle, dots.concat(corners));
+
     triangleDensity = getTriangleDensity(triangle, people, DENSITY);
     overPopulatedTriangles = triangleDensity.red;
     correctPopulatedTriangles = triangleDensity.orange;
     underPopulatedTriangles = triangleDensity.blue;
-    let vertices = new Float32Array(triangle.vertices);
+    lines = { vertices: triangle.vertices, indices: convertTriangleIndicesToLineIndices(triangle.indices) };
 
     // red triangles
     updateBuffer(gl, gl.ARRAY_BUFFER, overPopulatedTriangleBuffers.position, new Float32Array(overPopulatedTriangles.vertices), gl.DYNAMIC_DRAW);
@@ -357,6 +426,7 @@ function main() {
     updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, underPopulatedTriangleBuffers.indices, new Uint16Array(underPopulatedTriangles.indices), gl.DYNAMIC_DRAW);
 
     // lines
+    let vertices = new Float32Array(triangle.vertices);
     updateBuffer(gl, gl.ARRAY_BUFFER, lineBuffers.position, vertices, gl.DYNAMIC_DRAW);
     updateBuffer(gl, gl.ARRAY_BUFFER, lineBuffers.color, new Float32Array(generateUniformColors(lines.vertices.length / 2, LINE_COLOR)), gl.DYNAMIC_DRAW);
     updateBuffer(gl, gl.ELEMENT_ARRAY_BUFFER, lineBuffers.indices, new Uint16Array(lines.indices), gl.DYNAMIC_DRAW);
@@ -378,8 +448,8 @@ function main() {
     let lag = now - then;
     d.innerText = `x: ${Math.round(obstacle.x)}, y: ${Math.round(obstacle.y)}, scale: ${Math.round(obstacle.scale * 100)}%, rotation: ${obstacle.rotation}, lag: ${Math.round(lag)}ms`;
 
-    // Clear the canvas before we start drawing on it.
-    gl.clearColor(1.0, 1.0, 1.0, 1.0); // Set background to white
+    // clear the canvas before we start drawing on it.
+    gl.clearColor(1.0, 1.0, 1.0, 1.0); // set background to white
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     // draw the elements

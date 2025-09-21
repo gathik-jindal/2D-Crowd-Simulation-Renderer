@@ -3,6 +3,35 @@ import { generateUniformColors } from "./init-buffers.js";
 import { PEOPLE_COLOR, DOT_COLOR } from "./index.js";
 
 /**
+ * Calculates the four corner vertices of a rectangular obstacle based on its properties.
+ * @param {Object} obstacle The obstacle object
+ * @returns array of the 4 corner vertices of the obstacle [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+ */
+function getObstacleCorners(obstacle) {
+    // calculate the true rotated corner positions
+    const halfLength = (obstacle.length * obstacle.scale) / 2;
+    const halfWidth = (obstacle.width * obstacle.scale) / 2;
+    const angleRad = obstacle.rotation * Math.PI / 180;
+    const cosAngle = Math.cos(angleRad);
+    const sinAngle = Math.sin(angleRad);
+
+    const localCorners = [
+        [-halfLength, -halfWidth], // local top-left
+        [halfLength, -halfWidth],  // local top-right
+        [halfLength, halfWidth],   // local bottom-right
+        [-halfLength, halfWidth]   // local bottom-left
+    ];
+
+    const obstacleVertices = localCorners.map(p => {
+        const rotatedX = p[0] * cosAngle - p[1] * sinAngle;
+        const rotatedY = p[0] * sinAngle + p[1] * cosAngle;
+        return [rotatedX + obstacle.x, rotatedY + obstacle.y];
+    });
+
+    return obstacleVertices;
+}
+
+/**
  * This function removes people and dots that collide with a given obstacle position and adds them back within the defined boundaries.
  * @param {p1: Array<Number>, p2: Array<Number>, p3: Array<Number>, p4: Array<Number>, } obstacle The obstacle's position
  * @param {Array<Number>} people The array of people positions [x1, y1, x2, y2, ...]
@@ -144,29 +173,11 @@ function triangulateWithObstacle(obstacle, flatPoints) {
         userPoints.push([flatPoints[i], flatPoints[i + 1]]);
     }
 
-    // Calculate the true rotated corner positions
-    const halfLength = (obstacle.length * obstacle.scale) / 2;
-    const halfWidth = (obstacle.width * obstacle.scale) / 2;
-    const angleRad = obstacle.rotation * Math.PI / 180;
-    const cosAngle = Math.cos(angleRad);
-    const sinAngle = Math.sin(angleRad);
-
-    const localCorners = [
-        [-halfLength, -halfWidth], // Local top-left
-        [halfLength, -halfWidth],  // Local top-right
-        [halfLength, halfWidth],   // Local bottom-right
-        [-halfLength, halfWidth]   // Local bottom-left
-    ];
-
-    const obstacleVertices = localCorners.map(p => {
-        const rotatedX = p[0] * cosAngle - p[1] * sinAngle;
-        const rotatedY = p[0] * sinAngle + p[1] * cosAngle;
-        return [rotatedX + obstacle.x, rotatedY + obstacle.y];
-    });
+    const obstacleVertices = getObstacleCorners(obstacle);
 
     const allPoints = [...userPoints, ...obstacleVertices];
 
-    // Constraints are the edges connecting the new obstacle vertices
+    // constraints are the edges connecting the new obstacle vertices
     const userPointsCount = userPoints.length;
     const constraints = [
         [userPointsCount, userPointsCount + 1],
@@ -355,4 +366,44 @@ function resetAndRegeneratePoints(gl, obstacle, bounds, peopleBuffers, dotBuffer
     return { people: updatedPositions.people, dots: updatedPositions.dots };
 }
 
-export { updateCollisions, triangulateWithObstacle, getTriangleDensity, convertTriangleIndicesToLineIndices, resetAndRegeneratePoints };
+/**
+ * Finds the closest edge in a triangulation to a given point.
+ * @param {{x: Number, y: Number}} point The point to test against.
+ * @param {Array<Number>} vertices A flat array of vertex positions.
+ * @param {Array<Number>} indices A flat array of triangle indices.
+ * @returns {{edge: [Number, Number], distance: Number}|null} The closest edge and distance, or null.
+ */
+function findClosestEdge(point, vertices, indices) {
+    let closestEdge = null;
+    let minDistanceSq = Infinity;
+
+    for (let i = 0; i < indices.length; i += 3) {
+        const triIndices = [indices[i], indices[i + 1], indices[i + 2]];
+        const edges = [[triIndices[0], triIndices[1]], [triIndices[1], triIndices[2]], [triIndices[2], triIndices[0]]];
+
+        for (const edge of edges) {
+            const v1x = vertices[edge[0] * 2];
+            const v1y = vertices[edge[0] * 2 + 1];
+            const v2x = vertices[edge[1] * 2];
+            const v2y = vertices[edge[1] * 2 + 1];
+
+            const l2 = (v1x - v2x) ** 2 + (v1y - v2y) ** 2;
+            if (l2 === 0) continue;
+
+            let t = ((point.x - v1x) * (v2x - v1x) + (point.y - v1y) * (v2y - v1y)) / l2;
+            t = Math.max(0, Math.min(1, t));
+
+            const closestPointX = v1x + t * (v2x - v1x);
+            const closestPointY = v1y + t * (v2y - v1y);
+            const distSq = (point.x - closestPointX) ** 2 + (point.y - closestPointY) ** 2;
+
+            if (distSq < minDistanceSq) {
+                minDistanceSq = distSq;
+                closestEdge = edge;
+            }
+        }
+    }
+    return { edge: closestEdge, distance: Math.sqrt(minDistanceSq) };
+}
+
+export { updateCollisions, triangulateWithObstacle, getTriangleDensity, convertTriangleIndicesToLineIndices, resetAndRegeneratePoints, findClosestEdge, getObstacleCorners };
